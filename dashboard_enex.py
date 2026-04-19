@@ -21,6 +21,7 @@ CACHE_PROD      = os.path.join(DIR, "cache_productos.parquet")
 CACHE_TKT       = os.path.join(DIR, "cache_tickets.parquet")
 CACHE_TIENDAS   = os.path.join(DIR, "cache_tiendas.parquet")
 CACHE_PROMO_PROD= os.path.join(DIR, "cache_promo_prod.parquet")
+CACHE_DIA       = os.path.join(DIR, "cache_ventas_dia.parquet")
 EXCEL_MODEL     = os.path.join(DIR, "modelo 2026.xlsx")
 CATALOGO_PROMOS = os.path.join(DIR, "catalogo_promos.csv")
 
@@ -180,11 +181,7 @@ div[data-testid="stAppViewContainer"]{{opacity:1!important}}
   text-transform:uppercase;letter-spacing:.1em;margin:.7rem 0 .2rem}}
 
 /* Header */
-.enex-header{{
-  background:linear-gradient(135deg,{C_NAVY} 0%,#0055A8 100%);
-  padding:.9rem 1.4rem;border-radius:12px;margin-bottom:.7rem;
-  display:flex;align-items:center;justify-content:space-between
-}}
+.enex-header{{background:#003B7A;padding:.9rem 1.4rem;border-radius:8px;margin-bottom:.7rem;display:flex;align-items:center;justify-content:space-between}}
 .enex-title{{color:white;font-size:1.3rem;font-weight:800;margin:0;letter-spacing:-.3px}}
 .enex-sub{{color:rgba(255,255,255,.75);font-size:.78rem;margin:2px 0 0}}
 .enex-badge{{
@@ -194,18 +191,13 @@ div[data-testid="stAppViewContainer"]{{opacity:1!important}}
 }}
 
 /* KPI Cards */
-.kpi-card{{
-  background:white;border-radius:10px;padding:.8rem .5rem;
-  box-shadow:0 1px 4px rgba(0,0,0,.08),0 0 0 1px rgba(0,0,0,.04);
-  text-align:center;height:80px;
-  display:flex;flex-direction:column;justify-content:center
-}}
-.kv  {{font-size:1.2rem;font-weight:800;color:{C_NAVY};line-height:1.1}}
-.kv-g{{font-size:1.2rem;font-weight:800;color:{C_GREEN};line-height:1.1}}
-.kv-r{{font-size:1.2rem;font-weight:800;color:{C_ALERT};line-height:1.1}}
-.kv-a{{font-size:1.2rem;font-weight:800;color:{C_AMBER};line-height:1.1}}
-.kl  {{font-size:.6rem;color:#94A3B8;margin-top:3px;
-  text-transform:uppercase;letter-spacing:.07em;font-weight:500}}
+.kpi-card{{background:#fff;border-radius:6px;padding:.9rem 1.1rem;
+  border-left:3px solid #003B7A;box-shadow:0 1px 4px rgba(0,0,0,.08);margin-bottom:.4rem}}
+.kv  {{font-size:1.55rem;font-weight:800;color:{C_NAVY};line-height:1.1}}
+.kv-g{{font-size:1.55rem;font-weight:800;color:{C_GREEN};line-height:1.1}}
+.kv-r{{font-size:1.55rem;font-weight:800;color:{C_ALERT};line-height:1.1}}
+.kv-a{{font-size:1.55rem;font-weight:800;color:{C_AMBER};line-height:1.1}}
+.kl  {{font-size:.68rem;color:#64748B;text-transform:uppercase;letter-spacing:.07em;margin-top:2px}}
 
 /* Section headers */
 .sec{{
@@ -213,6 +205,7 @@ div[data-testid="stAppViewContainer"]{{opacity:1!important}}
   border-left:3px solid {C_RED};padding:2px 0 2px 8px;
   margin:1rem 0 .4rem;text-transform:uppercase;letter-spacing:.06em
 }}
+.sec-title{{font-size:.72rem;font-weight:700;color:#003B7A;text-transform:uppercase;letter-spacing:.1em;border-left:3px solid #C8102E;padding-left:8px;margin:.8rem 0 .4rem}}
 
 /* Alert chips */
 .chip-r{{display:inline-block;background:#FFF5F5;border:1px solid #FEB2B2;
@@ -252,6 +245,7 @@ USECOLS = ["Tiendas","Transaccion","Fecha_raw","Cod_prod","Nom_prod","Categoria"
 KEY_MAIN      = ["Anio_mes","Tiendas","Categoria","Cod_promo","Nom_promo","Tipo","Sistema"]
 KEY_PROD      = ["Anio_mes","Cod_prod","Nom_prod","Categoria"]
 KEY_PROMO_PROD= ["Anio_mes","Cod_prod","Nom_prod","Categoria","has_promo"]
+KEY_DIA       = ["Fecha","Semana","Anio_mes","CicloAño_mes","Categoria","Cod_promo","Nom_promo","Tipo"]
 
 def cache_valido(files):
     if not files:
@@ -263,7 +257,7 @@ def cache_valido(files):
     return cm > max(os.path.getmtime(f) for f in files)
 
 def procesar_archivo(fp):
-    facts, prods_f, tkt_pairs, promo_prods_f = [], [], [], []
+    facts, prods_f, tkt_pairs, promo_prods_f, dias_f = [], [], [], [], []
     for chunk in pd.read_csv(fp, sep=";", header=None, names=COL_NAMES, usecols=USECOLS,
                              dtype=str, chunksize=150_000, encoding="utf-8",
                              on_bad_lines="skip", low_memory=False):
@@ -271,7 +265,10 @@ def procesar_archivo(fp):
         mask = f.str.len() == 8
         chunk = chunk[mask].copy()
         if chunk.empty: continue
-        chunk["Anio_mes"] = f[mask].str[:4] + "-" + f[mask].str[4:6]
+        chunk["Anio_mes"]    = f[mask].str[:4] + "-" + f[mask].str[4:6]
+        chunk["Fecha"]       = f[mask].str[:4] + "-" + f[mask].str[4:6] + "-" + f[mask].str[6:8]
+        chunk["Semana"]      = pd.to_datetime(chunk["Fecha"], errors="coerce").dt.strftime("%Y-W%V").fillna("")
+        chunk["CicloAño_mes"]= chunk["Anio_mes"].map(MES_CICLO).fillna("")
         for col in ["Cantidad","Precio","Importe","Costo_unit"]:
             chunk[col] = pd.to_numeric(chunk[col], errors="coerce").fillna(0).astype("float32")
         chunk["Costo_total"]   = (chunk["Costo_unit"] * chunk["Cantidad"]).astype("float32")
@@ -300,8 +297,14 @@ def procesar_archivo(fp):
                  Precio_x_Cant=("Precio_x_Cant","sum"), Costo_total=("Costo_total","sum"))
             .reset_index()
         )
+        dias_f.append(
+            chunk.groupby(KEY_DIA, dropna=False)
+            .agg(Importe=("Importe","sum"), Cantidad=("Cantidad","sum"),
+                 Precio_x_Cant=("Precio_x_Cant","sum"), Costo_total=("Costo_total","sum"))
+            .reset_index()
+        )
     if not facts:
-        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
     dm_ = pd.concat(facts).groupby(KEY_MAIN, dropna=False)[
         ["Importe","Cantidad","Precio_x_Cant","Costo_total"]].sum().reset_index()
     dp_ = pd.concat(prods_f).groupby(KEY_PROD, dropna=False)[
@@ -312,19 +315,22 @@ def procesar_archivo(fp):
         n_tickets=("Transaccion","count"), n_tkt_promo=("has_promo","sum")).reset_index()
     dpp_ = pd.concat(promo_prods_f).groupby(KEY_PROMO_PROD, dropna=False)[
         ["Importe","Cantidad","Precio_x_Cant","Costo_total"]].sum().reset_index()
-    return dm_, dp_, dt_, dpp_
+    ddia_ = pd.concat(dias_f).groupby(KEY_DIA, dropna=False)[
+        ["Importe","Cantidad","Precio_x_Cant","Costo_total"]].sum().reset_index() if dias_f else pd.DataFrame()
+    return dm_, dp_, dt_, dpp_, ddia_
 
 def build_cache(files):
     ph = st.empty(); bar = st.progress(0)
-    mains, prods, tkts, promo_prods = [], [], [], []
+    mains, prods, tkts, promo_prods, dias = [], [], [], [], []
     for i, f in enumerate(files):
         ph.info(f"Procesando **{os.path.basename(f)}** ({i+1}/{len(files)})…")
         bar.progress(int(i/len(files)*100))
-        dm_, dp_, dt_, dpp_ = procesar_archivo(f)
-        if not dm_.empty:  mains.append(dm_)
-        if not dp_.empty:  prods.append(dp_)
-        if not dt_.empty:  tkts.append(dt_)
-        if not dpp_.empty: promo_prods.append(dpp_)
+        dm_, dp_, dt_, dpp_, ddia_ = procesar_archivo(f)
+        if not dm_.empty:   mains.append(dm_)
+        if not dp_.empty:   prods.append(dp_)
+        if not dt_.empty:   tkts.append(dt_)
+        if not dpp_.empty:  promo_prods.append(dpp_)
+        if not ddia_.empty: dias.append(ddia_)
         gc.collect()
     bar.progress(100); ph.info("Guardando cache…")
     pd.concat(mains).groupby(KEY_MAIN, dropna=False)[
@@ -335,6 +341,9 @@ def build_cache(files):
         ["n_tickets","n_tkt_promo"]].sum().reset_index().to_parquet(CACHE_TKT, index=False)
     pd.concat(promo_prods).groupby(KEY_PROMO_PROD, dropna=False)[
         ["Importe","Cantidad","Precio_x_Cant","Costo_total"]].sum().reset_index().to_parquet(CACHE_PROMO_PROD, index=False)
+    if dias:
+        pd.concat(dias).groupby(KEY_DIA, dropna=False)[
+            ["Importe","Cantidad","Precio_x_Cant","Costo_total"]].sum().reset_index().to_parquet(CACHE_DIA, index=False)
     ph.empty(); bar.empty()
 
 @st.cache_resource(show_spinner=False)
@@ -350,7 +359,8 @@ def load_data():
     dm_  = pd.read_parquet(CACHE_MAIN)
     dp_  = pd.read_parquet(CACHE_PROD)
     dt_  = pd.read_parquet(CACHE_TKT)
-    dpp_ = pd.read_parquet(CACHE_PROMO_PROD) if os.path.exists(CACHE_PROMO_PROD) else pd.DataFrame()
+    dpp_  = pd.read_parquet(CACHE_PROMO_PROD) if os.path.exists(CACHE_PROMO_PROD) else pd.DataFrame()
+    ddia_ = pd.read_parquet(CACHE_DIA)       if os.path.exists(CACHE_DIA)        else pd.DataFrame()
     if "Precio_x_Cant" not in dp_.columns:
         dp_["Precio_x_Cant"] = dp_["Importe"]
     # ── Excluir categorías fuera del modelo ──
@@ -374,27 +384,27 @@ def load_data():
     # Tiendas como string para join
     if "Tiendas" in dm_.columns:
         dm_["Tiendas"] = dm_["Tiendas"].astype(str).str.strip()
-    return dm_, dp_, dt_, dpp_, len(files)
+    return dm_, dp_, dt_, dpp_, ddia_, len(files)
 
 
 def merge_csv_al_cache(uploaded_file):
     """Procesa un CSV subido y lo fusiona con el caché existente sin tocar los otros archivos."""
     import tempfile
     ph = st.empty(); bar = st.progress(0)
-    ph.info("📖 Leyendo archivo…")
+    ph.info("Leyendo archivo…")
     with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as tmp:
         tmp.write(uploaded_file.getvalue())
         tmp_path = tmp.name
     try:
-        ph.info("⚙️ Procesando datos…"); bar.progress(15)
-        dm_new, dp_new, dt_new, dpp_new = procesar_archivo(tmp_path)
+        ph.info("Procesando datos…"); bar.progress(15)
+        dm_new, dp_new, dt_new, dpp_new, ddia_new = procesar_archivo(tmp_path)
     finally:
         os.unlink(tmp_path)
     if dm_new.empty:
-        ph.error("❌ El archivo no tiene datos válidos. Verifica el formato.")
+        ph.error("El archivo no tiene datos válidos. Verifica el formato.")
         bar.empty(); return []
     meses_nuevos = dm_new["Anio_mes"].unique().tolist()
-    ph.info(f"🔀 Fusionando {len(meses_nuevos)} mes(es)…"); bar.progress(35)
+    ph.info(f"Fusionando {len(meses_nuevos)} mes(es)…"); bar.progress(35)
 
     # ── ventas ──
     if os.path.exists(CACHE_MAIN):
@@ -438,7 +448,18 @@ def merge_csv_al_cache(uploaded_file):
         dpp_fin.to_parquet(CACHE_PROMO_PROD, index=False)
     bar.progress(90)
 
-    ph.info("💾 Guardando…")
+    # ── ventas diarias ──
+    if not ddia_new.empty:
+        if os.path.exists(CACHE_DIA):
+            _ex = pd.read_parquet(CACHE_DIA)
+            _ex = _ex[~_ex["Anio_mes"].isin(meses_nuevos)]
+            ddia_fin = pd.concat([_ex, ddia_new]).groupby(KEY_DIA, dropna=False)[
+                ["Importe","Cantidad","Precio_x_Cant","Costo_total"]].sum().reset_index()
+        else:
+            ddia_fin = ddia_new
+        ddia_fin.to_parquet(CACHE_DIA, index=False)
+
+    ph.info("Guardando…")
     dm_fin.to_parquet(CACHE_MAIN,  index=False)
     dp_fin.to_parquet(CACHE_PROD,  index=False)
     dt_fin.to_parquet(CACHE_TKT,   index=False)
@@ -518,7 +539,7 @@ def load_catalogo():
         return pd.DataFrame()
 
 
-dm, dp, dt, dpp, n_files = load_data()
+dm, dp, dt, dpp, ddia, n_files = load_data()
 if dm is None:
     st.error(f"No se encontraron CSV en:\n`{FOLDER}`"); st.stop()
 if dm.empty:
@@ -526,6 +547,25 @@ if dm.empty:
 
 df_tiendas  = load_tiendas()   # puede ser empty DataFrame si falla
 df_catalogo = load_catalogo()  # catálogo de promos con Unidades_por_promo
+
+def agregar_gran(df, gran, extra_cols=None):
+    """Agrega df diario a la granularidad solicitada.
+    gran: 'Diario' | 'Semanal' | 'Mensual' | 'Ciclo'
+    Devuelve df con columna 'Periodo' como eje x."""
+    if df is None or df.empty: return pd.DataFrame()
+    df = df.copy()
+    if gran == "Diario":
+        df["Periodo"] = df.get("Fecha", df.get("Anio_mes",""))
+    elif gran == "Semanal":
+        df["Periodo"] = df.get("Semana", df.get("Anio_mes",""))
+    elif gran == "Mensual":
+        df["Periodo"] = df.get("Anio_mes","")
+    else:  # Ciclo
+        df["Periodo"] = df.get("CicloAño_mes", df.get("CicloAño_p","")).replace("","Sin ciclo")
+    grp_cols = ["Periodo"] + [c for c in (extra_cols or []) if c in df.columns]
+    num_cols  = [c for c in ["Importe","Cantidad","Precio_x_Cant","Costo_total"] if c in df.columns]
+    if not num_cols: return pd.DataFrame()
+    return df.groupby(grp_cols, dropna=False)[num_cols].sum().reset_index().sort_values("Periodo")
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -566,7 +606,7 @@ def kpi(col, val, lbl, c=""):
                  f'<div class="kl">{lbl}</div></div>', unsafe_allow_html=True)
 
 def sec(txt):
-    st.markdown(f'<div class="sec">{txt}</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="sec-title">{txt}</div>', unsafe_allow_html=True)
 
 def pcfg(fig, h=300, legend=True, title=None):
     """Estilo limpio ENEX para todos los gráficos."""
@@ -819,7 +859,7 @@ def generar_excel(D, filtro_desc=""):
 with st.sidebar:
     st.markdown(f"""
     <div class="sb-logo">
-      <div class="sb-logo-title">⛽ ENEX S.A.</div>
+      <div class="sb-logo-title">ENEX S.A.</div>
       <div class="sb-logo-sub">Pricing Intelligence</div>
     </div>""", unsafe_allow_html=True)
     st.caption(f"{n_files} archivos · caché activo")
@@ -921,7 +961,7 @@ with st.sidebar:
 
     # ── Subir CSV nuevo ──
     st.divider()
-    st.markdown('<div class="sb-sec">📁 Agregar datos (CSV)</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sb-sec">Agregar datos (CSV)</div>', unsafe_allow_html=True)
 
     _meses_actuales = sorted(dm["Anio_mes"].dropna().unique().tolist())
     if _meses_actuales:
@@ -933,7 +973,7 @@ with st.sidebar:
         help="El archivo debe tener el mismo formato que los CSV de ciclo ENEX."
     )
     if _csv_up is not None:
-        if st.button("✅ Incorporar al dashboard", use_container_width=True, key="btn_upload"):
+        if st.button("Incorporar al dashboard", use_container_width=True, key="btn_upload"):
             _meses_ok = merge_csv_al_cache(_csv_up)
             if _meses_ok:
                 st.success(f"Incorporado: {', '.join(_meses_ok)}")
@@ -941,7 +981,7 @@ with st.sidebar:
 
     # ── Subir catálogo de promos ──
     st.divider()
-    st.markdown('<div class="sb-sec">📋 Catálogo de Promos</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sb-sec">Catálogo de Promos</div>', unsafe_allow_html=True)
     if not df_catalogo.empty:
         st.caption(f"Catálogo cargado: **{len(df_catalogo)}** promos")
     _cat_up = st.file_uploader(
@@ -950,14 +990,14 @@ with st.sidebar:
         help="CSV con columnas: Código promoción, Promoción, Formato promo, Unidades por promoción"
     )
     if _cat_up is not None:
-        if st.button("✅ Cargar catálogo", use_container_width=True, key="btn_cat_upload"):
+        if st.button("Cargar catálogo", use_container_width=True, key="btn_cat_upload"):
             _cat_path = os.path.join(DIR, "catalogo_promos_custom.csv")
             with open(_cat_path, "wb") as f_:
                 f_.write(_cat_up.getvalue())
             st.cache_resource.clear(); st.rerun()
 
     st.divider()
-    if st.button("🔄 Recalcular cache completo", use_container_width=True):
+    if st.button("Recalcular cache completo", use_container_width=True):
         for p_ in [CACHE_MAIN, CACHE_PROD, CACHE_TKT, CACHE_TIENDAS, CACHE_PROMO_PROD]:
             if os.path.exists(p_): os.remove(p_)
         st.cache_resource.clear(); st.cache_data.clear(); st.rerun()
@@ -1395,6 +1435,40 @@ def all_data(fk):
         FROM ventas {wp}
         GROUP BY 1,2,3 ORDER BY Ingresos DESC""")
 
+    # ── EVOLUTIVO POR CICLO ──
+    D["evo_ciclo"] = q(f"""
+        SELECT CicloAño_p AS Ciclo,
+               COALESCE(Categoria,'–') AS Categoria,
+               COALESCE(NULLIF(TRIM(Nom_promo),''), Cod_promo, '?') AS Promo,
+               Cod_promo,
+               SUM(Importe)  AS Ingresos,
+               SUM(Cantidad) AS Unidades,
+               COUNT(DISTINCT ventas.Tiendas) AS Tiendas,
+               (SUM(Importe)-SUM(Costo_total))/NULLIF(SUM(Importe),0) AS Mg_pct
+        FROM ventas {wp}
+        AND CicloAño_p != ''
+        GROUP BY 1,2,3,4 ORDER BY 1,2""")
+
+    # ── MODALIDAD DE VENTA (por TipoPromo) ──
+    D["modalidad_venta"] = q(f"""
+        SELECT COALESCE(NULLIF(TRIM(TipoPromo),''),'Sin promo') AS Modalidad,
+               COALESCE(Categoria,'–') AS Categoria,
+               SUM(Importe)  AS Ingresos,
+               SUM(Cantidad) AS Unidades
+        FROM ventas {wp}
+        GROUP BY 1,2 ORDER BY Unidades DESC""")
+
+    # ── PENETRACIÓN POR CATEGORÍA — versión desde ventas (base para T[7]) ──
+    D["pen_cat_v"] = q(f"""
+        SELECT COALESCE(Categoria,'–') AS Categoria,
+               SUM(Cantidad) AS Unidades_total,
+               SUM(CASE WHEN Cod_promo IS NOT NULL AND TRIM(Cod_promo)!='' THEN Cantidad ELSE 0 END) AS Unidades_promo,
+               SUM(CASE WHEN Cod_promo IS NULL OR TRIM(Cod_promo)='' THEN Cantidad ELSE 0 END) AS Unidades_sin_promo,
+               SUM(Importe) AS Ingresos_total,
+               SUM(CASE WHEN Cod_promo IS NOT NULL AND TRIM(Cod_promo)!='' THEN Importe ELSE 0 END) AS Ingresos_promo
+        FROM ventas
+        GROUP BY 1 ORDER BY Unidades_total DESC""")
+
     D["promo_por_cat_ciclo"] = q(f"""
         SELECT COALESCE(Categoria,'–') AS Categoria,
                COALESCE(NULLIF(TRIM(Nom_promo),''),Cod_promo,'?') AS Promo,
@@ -1628,6 +1702,9 @@ df_price_ladder = D["price_ladder"]
 df_cobertura    = D["cobertura_prod"]
 vf      = D["_vf"]
 pf      = D["_pf"]
+df_evo_ciclo    = D.get("evo_ciclo",    pd.DataFrame())
+df_modalidad    = D.get("modalidad_venta", pd.DataFrame())
+df_pen_cat_promo = D.get("pen_cat_v",   pd.DataFrame())
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -1654,7 +1731,7 @@ elif _ciclo_nums: _ciclo_badge += " · " + ", ".join(_ciclo_nums)
 st.markdown(f"""
 <div class="enex-header">
   <div>
-    <div class="enex-title">⛽ Pricing Intelligence · ENEX S.A.</div>
+    <div class="enex-title">Pricing Intelligence · ENEX S.A.</div>
     <div class="enex-sub">Gerencia Comercial · {len(_eff_ms_sorted)} meses · {rng}{_ciclo_badge}</div>
   </div>
   <div class="enex-badge">{len(_cats)} categorías · {int(n_tiendas)} tiendas</div>
@@ -1675,9 +1752,9 @@ kpi(k[7], pct(desc_pct),  "Descuento %",    "a")
 #  TABS
 # ══════════════════════════════════════════════════════════════════
 T = st.tabs([
-    "📊 Resumen","💰 Margen","📈 Precio & Costo",
-    "🎯 Promociones","🏪 Tiendas","🔔 Alertas","🔀 Cruces","📣 Análisis Promo",
-    "📅 YoY","🏆 Ranking SKU","📋 Datos"
+    "Resumen","Margen","Precio & Costo",
+    "Promociones","Tiendas","Alertas","Cruces","Análisis Promo",
+    "YoY","Ranking SKU","Datos"
 ])
 
 
@@ -1744,41 +1821,30 @@ with T[0]:
             sec("Mix de Ingresos por Categoría")
             st.plotly_chart(pcfg(fig2, 310, legend=False), use_container_width=True)
 
-    if not df_par.empty:
-        df_par = df_par.copy()
-        df_par["Pct"]     = df_par["Margen"] / df_par["Margen"].sum()
-        df_par["Cum_pct"] = df_par["Pct"].cumsum()
-        df_par["Rank"]    = range(1, len(df_par)+1)
-        cut80 = int(df_par[df_par["Cum_pct"]<=0.80]["Rank"].max()) \
-                if not df_par[df_par["Cum_pct"]<=0.80].empty else len(df_par)
-        pct_skus = cut80 / len(df_par) * 100
-        fig3 = go.Figure()
-        fig3.add_trace(go.Bar(
-            x=df_par["Rank"], y=df_par["Pct"],
-            marker_color=C_NAVY, marker_line_width=0, name="% Margen individual",
-            opacity=0.8,
-            hovertemplate="Producto #%{x}<br>Aporte al margen: %{y:.2%}<extra></extra>"
-        ))
-        fig3.add_trace(go.Scatter(
-            x=df_par["Rank"], y=df_par["Cum_pct"],
-            line=dict(color=C_AMBER, width=2.5), name="% Acumulado",
-            yaxis="y2",
-            hovertemplate="Producto #%{x}<br>Acumulado: %{y:.1%}<extra></extra>"
-        ))
-        fig3.add_vline(x=cut80, line_dash="dash", line_color=C_RED, line_width=1.5,
-                       annotation_text=f"  {cut80} SKUs = 80% del margen ({pct_skus:.0f}% del catálogo)",
-                       annotation_font_size=10, annotation_font_color=C_RED)
-        fig3.add_hline(y=0.80, line_dash="dot", line_color=C_RED, line_width=1,
-                       yref="y2")
-        fig3.update_layout(
-            yaxis=dict(tickformat=".1%", gridcolor="#F3F4F6", title="Aporte al margen"),
-            yaxis2=dict(overlaying="y", side="right", tickformat=".0%",
-                        title="% Acumulado", range=[0,1.05]),
-            xaxis_title="Ranking de productos por margen (mayor a menor)",
-            legend=dict(orientation="h", y=1.12)
-        )
-        sec(f"Análisis Pareto — {cut80} SKUs generan el 80% del margen ({pct_skus:.0f}% del catálogo)")
-        st.plotly_chart(pcfg(fig3, 260), use_container_width=True)
+    if not df_prod.empty:
+        _tm_sku = df_prod[df_prod["Margen"] > 0].copy()
+        if not _tm_sku.empty:
+            fig3 = px.treemap(
+                _tm_sku, path=["Categoria", "Producto"], values="Margen",
+                color="Mg_pct",
+                color_continuous_scale=["#C8102E", "#F5A623", "#1A9E5C"],
+                custom_data=["Ingresos", "Mg_pct"]
+            )
+            fig3.update_traces(
+                texttemplate="<b>%{label}</b><br>%{customdata[1]:.1%}",
+                textfont_size=10,
+                hovertemplate=(
+                    "<b>%{label}</b><br>"
+                    "Margen $: $%{value:,.0f}<br>"
+                    "Ingresos: $%{customdata[0]:,.0f}<br>"
+                    "Margen %%: %{customdata[1]:.1%}<extra></extra>"
+                )
+            )
+            fig3.update_layout(
+                coloraxis_colorbar=dict(title="Margen %", tickformat=".0%", len=0.6)
+            )
+            sec("Composición del Margen por Categoría y SKU")
+            st.plotly_chart(pcfg(fig3, 400, legend=False), use_container_width=True)
 
     sec("Resumen por Categoría")
     if not df_tm.empty:
@@ -1787,7 +1853,7 @@ with T[0]:
         d["Ingresos"]    = d["Ingresos"].apply(clp)
         d["Margen"]      = d["Margen"].apply(clp)
         d["Margen %"]    = d["Mg_pct"].apply(lambda x: f"{x*100:.1f}%")
-        d["Estado"]      = d["Mg_pct"].apply(lambda x: "🟢 Saludable" if x>=0.20 else ("🟡 Ajustado" if x>=0.10 else "🔴 Crítico"))
+        d["Estado"]      = d["Mg_pct"].apply(lambda x: "Saludable" if x>=0.20 else ("Ajustado" if x>=0.10 else "Crítico"))
         st.dataframe(d[["Estado","Categoria","Ingresos","% del total","Margen","Margen %"]],
                      use_container_width=True, hide_index=True, height=240)
 
@@ -1854,20 +1920,20 @@ with T[1]:
         med_und = df_sc["Unidades"].median()
         med_mg  = df_sc["Mg_pct"].median()
         df_sc["Cuadrante"] = df_sc.apply(lambda r:
-            "Alto margen · alta rotación 🎯" if r["Mg_pct"]>=med_mg and r["Unidades"]>=med_und
-            else ("Alto margen · baja rotación 💡" if r["Mg_pct"]>=med_mg and r["Unidades"]<med_und
-            else ("Bajo margen · alta rotación ⚠️" if r["Mg_pct"]<med_mg and r["Unidades"]>=med_und
-            else "Bajo margen · baja rotación 🔴")), axis=1)
+            "Alto margen · alta rotación" if r["Mg_pct"]>=med_mg and r["Unidades"]>=med_und
+            else ("Alto margen · baja rotación" if r["Mg_pct"]>=med_mg and r["Unidades"]<med_und
+            else ("Bajo margen · alta rotación" if r["Mg_pct"]<med_mg and r["Unidades"]>=med_und
+            else "Bajo margen · baja rotación")), axis=1)
         cuad_colors = {
-            "Alto margen · alta rotación 🎯": C_GREEN,
-            "Alto margen · baja rotación 💡": C_BLUE2,
-            "Bajo margen · alta rotación ⚠️": C_AMBER,
-            "Bajo margen · baja rotación 🔴": C_ALERT
+            "Alto margen · alta rotación": C_GREEN,
+            "Alto margen · baja rotación": C_BLUE2,
+            "Bajo margen · alta rotación": C_AMBER,
+            "Bajo margen · baja rotación": C_ALERT
         }
         fig3 = px.scatter(
             df_sc, x="Unidades", y="Mg_pct", size=sz(df_sc["Ingresos"]),
             hover_name="Producto", color="Cuadrante",
-            color_discrete_map=cuad_colors, size_max=50, opacity=0.8,
+            color_discrete_map=cuad_colors, size_max=60, opacity=0.65,
             custom_data=["Ingresos","Margen","Categoria"]
         )
         fig3.update_traces(
@@ -1887,9 +1953,9 @@ with T[1]:
                        annotation_font_size=10, annotation_font_color=C_GRAY)
         # Etiquetas de cuadrantes
         fig3.add_annotation(x=df_sc["Unidades"].max()*0.95, y=df_sc["Mg_pct"].max()*0.95,
-            text="🎯 Estrella", showarrow=False, font=dict(color=C_GREEN, size=10))
+            text="Estrella", showarrow=False, font=dict(color=C_GREEN, size=10))
         fig3.add_annotation(x=df_sc["Unidades"].max()*0.95, y=med_mg*0.3,
-            text="⚠️ Vacas lecheras a revisar", showarrow=False, font=dict(color=C_AMBER, size=10))
+            text="Vacas lecheras a revisar", showarrow=False, font=dict(color=C_AMBER, size=10))
         fig3.update_yaxes(tickformat=".0%", title="Margen %")
         fig3.update_xaxes(title="Unidades vendidas")
         sec("Diagnóstico de portafolio — Margen % vs Volumen (burbuja = ingresos)")
@@ -1905,7 +1971,7 @@ with T[1]:
         df_show["Margen $"]  = df_show["Margen"].apply(clp)
         df_show["Precio ef."]= df_show["Precio_ef"].apply(lambda x: f"${x:,.0f}".replace(",",".") if pd.notna(x) else "–")
         df_show["Costo u."]  = df_show["Costo_unit"].apply(lambda x: f"${x:,.0f}".replace(",",".") if pd.notna(x) else "–")
-        df_show["Estado"]    = df_show["Mg_pct"].apply(lambda x: "🔴" if x<0 else ("🟡" if x<0.10 else "🟢"))
+        df_show["Estado"]    = df_show["Mg_pct"].apply(lambda x: "NEG" if x<0 else ("LOW" if x<0.10 else "OK"))
         st.dataframe(df_show[["Estado","#","Producto","Categoria","Ingresos","Margen $","Margen %","Precio ef.","Costo u.","Markup"]],
                      use_container_width=True, hide_index=True, height=340)
 
@@ -2021,7 +2087,7 @@ with T[2]:
                 ))
                 fig4.update_layout(barmode="group", xaxis_tickangle=-30,
                                    yaxis_title="Variación % (período completo)")
-                sec("⚠️ Compresión de margen — el costo subió más que el precio")
+                sec("Compresión de margen — el costo subió más que el precio")
                 st.plotly_chart(pcfg(fig4, 290),
                                 use_container_width=True)
             else:
@@ -2044,7 +2110,7 @@ with T[2]:
                 ))
                 fig5.update_layout(barmode="group", xaxis_tickangle=-30,
                                    yaxis_title="Variación % (período completo)")
-                sec("✅ Expansión de margen — el precio subió más que el costo")
+                sec("Expansión de margen — el precio subió más que el costo")
                 st.plotly_chart(pcfg(fig5, 290),
                                 use_container_width=True)
             else:
@@ -2082,24 +2148,21 @@ with T[3]:
         df_ap = df_ap.copy()
         df_ap["Cobertura"] = df_ap["Tiendas"]/n_tiendas if n_tiendas>0 else 0
         df_ap["Semaforo"]  = df_ap.apply(lambda r:
-            "🟢 Buena"   if r["Mg_pct"]>=0.20 and r["ROI"]>=2 and r["Cobertura"]>=0.3
-            else ("🟡 Regular" if (r["Mg_pct"]>=0.10 or s(r["ROI"])>=1)
-            else "🔴 Crítica"), axis=1)
+            "Buena" if r["Mg_pct"]>=0.20 and r["ROI"]>=2 and r["Cobertura"]>=0.3
+            else ("Regular" if (r["Mg_pct"]>=0.10 or s(r["ROI"])>=1)
+            else "Crítica"), axis=1)
 
         promo_ing = s(df_ap["Ingresos"].sum())
         promo_mg  = s(df_ap["Margen"].sum())
         promo_inv = s(df_ap["Descuento"].sum())
         roi_glob  = promo_ing/promo_inv if promo_inv>0 else 0
-        buenas    = len(df_ap[df_ap["Semaforo"]=="🟢 Buena"])
-        criticas  = len(df_ap[df_ap["Semaforo"]=="🔴 Crítica"])
+        buenas    = len(df_ap[df_ap["Semaforo"]=="Buena"])
+        criticas  = len(df_ap[df_ap["Semaforo"]=="Crítica"])
 
-        k = st.columns(6)
+        k = st.columns(3)
         kpi(k[0], clp(promo_ing),  "Ingresos Promo",   "g")
         kpi(k[1], clp(promo_mg),   "Margen Promo",     "g" if promo_mg>0 else "r")
         kpi(k[2], clp(promo_inv),  "Inversión Markdown")
-        kpi(k[3], f"{roi_glob:.2f}×", "ROI Global",    "g" if roi_glob>=2 else ("a" if roi_glob>=1 else "r"))
-        kpi(k[4], str(buenas),     "Promos Buenas 🟢",  "g")
-        kpi(k[5], str(criticas),   "Promos Críticas 🔴","r")
 
         c1,c2 = st.columns([2,1])
         with c1:
@@ -2109,7 +2172,7 @@ with T[3]:
             fig = px.bar(
                 df_top_pr, x="Ingresos", y="Promo", orientation="h",
                 color="Semaforo",
-                color_discrete_map={"🟢 Buena":C_GREEN,"🟡 Regular":C_AMBER,"🔴 Crítica":C_RED},
+                color_discrete_map={"Buena":C_GREEN,"Regular":C_AMBER,"Crítica":C_RED},
                 text="lbl",
                 custom_data=["Margen","Mg_pct","Descuento","ROI","Tiendas","Cobertura"]
             )
@@ -2131,36 +2194,6 @@ with T[3]:
             st.plotly_chart(pcfg(fig, max(320,top_n*30)),
                             use_container_width=True)
 
-        with c2:
-            if not df_mec.empty:
-                df_mec_s = df_mec.copy()
-                df_mec_s["lbl"] = df_mec_s["ROI"].apply(lambda x: f"{x:.1f}×")
-                fig2 = px.bar(
-                    df_mec_s, x="Mecanica", y="ROI",
-                    color="ROI", color_continuous_scale=["#C8102E","#F5A623","#1A9E5C"],
-                    text="lbl",
-                    custom_data=["Ingresos","Mg_pct","Promos","Inversion"]
-                )
-                fig2.update_traces(
-                    textposition="outside", textfont_size=10,
-                    marker_line_width=0,
-                    hovertemplate=(
-                        "<b>%{x}</b><br>"
-                        "ROI: %{y:.2f}×<br>"
-                        "Ingresos: $%{customdata[0]:,.0f}<br>"
-                        "Margen %%: %{customdata[1]:.1%}<br>"
-                        "# Promos: %{customdata[2]}<br>"
-                        "Inversión: $%{customdata[3]:,.0f}<extra></extra>"
-                    )
-                )
-                fig2.add_hline(y=1, line_dash="dash", line_color=C_RED, line_width=1.5,
-                               annotation_text="  ROI = 1× (break-even)",
-                               annotation_font_size=9, annotation_font_color=C_RED)
-                fig2.update_layout(xaxis_tickangle=-15, coloraxis_showscale=False)
-                fig2.update_yaxes(title="ROI")
-                sec("ROI por mecánica de promoción")
-                st.plotly_chart(pcfg(fig2, max(320,top_n*30), legend=False),
-                                use_container_width=True)
 
         if not df_hm.empty:
             piv = df_hm.pivot(index="Promo", columns="Anio_mes", values="Ingresos").fillna(0)
@@ -2180,55 +2213,6 @@ with T[3]:
             sec("Mapa de calor — Ingresos por promo y mes (Top 20)")
             st.plotly_chart(pcfg(fig3, max(380,len(piv)*28), legend=False),
                             use_container_width=True)
-
-        # Filtrar outliers para escala legible (percentil 95 en ROI, margen entre -1 y 2)
-        _sc_full = df_ap[df_ap["ROI"].notna()].copy()
-        _roi_max = float(_sc_full["ROI"].quantile(0.93)) if len(_sc_full) > 5 else 20
-        _mg_min  = max(-1.0, float(_sc_full["Mg_pct"].quantile(0.02)))
-        _mg_max  = min(2.0,  float(_sc_full["Mg_pct"].quantile(0.98)))
-        df_sc = _sc_full[
-            (_sc_full["ROI"] >= 0) & (_sc_full["ROI"] <= _roi_max) &
-            (_sc_full["Mg_pct"] >= _mg_min) & (_sc_full["Mg_pct"] <= _mg_max)
-        ].copy()
-        _excl = len(_sc_full) - len(df_sc)
-        df_sc["Cob_sz"] = (df_sc["Cobertura"]*100).clip(lower=1)
-        if not df_sc.empty:
-            fig4 = px.scatter(
-                df_sc, x="ROI", y="Mg_pct", size="Cob_sz",
-                hover_name="Promo", color="Semaforo",
-                color_discrete_map={"🟢 Buena":C_GREEN,"🟡 Regular":C_AMBER,"🔴 Crítica":C_RED},
-                size_max=40, opacity=0.85,
-                custom_data=["Ingresos","Descuento","Tiendas","Cobertura"]
-            )
-            fig4.update_traces(
-                hovertemplate=(
-                    "<b>%{hovertext}</b><br>"
-                    "ROI: %{x:.1f}×  ·  Margen: %{y:.1%}<br>"
-                    "Ingresos: $%{customdata[0]:,.0f}<br>"
-                    "Inversión: $%{customdata[1]:,.0f}<br>"
-                    "Tiendas: %{customdata[2]} (%{customdata[3]:.0%} cobertura)<extra></extra>"
-                )
-            )
-            fig4.add_vline(x=1, line_dash="dash", line_color="#6B7280", line_width=1.5,
-                           annotation_text="ROI = 1×", annotation_font_size=9,
-                           annotation_font_color="#6B7280")
-            fig4.add_hline(y=0.15, line_dash="dash", line_color="#6B7280", line_width=1.5,
-                           annotation_text="Margen 15%", annotation_font_size=9,
-                           annotation_font_color="#6B7280")
-            # Zona ideal (arriba derecha)
-            fig4.add_shape(type="rect",
-                x0=1, x1=_roi_max, y0=0.15, y1=_mg_max,
-                fillcolor="rgba(26,158,92,0.06)", line_width=0)
-            fig4.add_annotation(x=_roi_max*0.7, y=_mg_max*0.85,
-                text="⭐ Zona ideal", showarrow=False,
-                font=dict(color=C_GREEN, size=11, family="Segoe UI"))
-            fig4.update_yaxes(tickformat=".0%", title="Margen % sobre ingresos",
-                              range=[_mg_min - 0.05, _mg_max + 0.05])
-            fig4.update_xaxes(title="ROI (× ingresos por cada $ invertido en descuento)",
-                              range=[-0.3, _roi_max + 0.5])
-            _note = f" — {_excl} promos con valores extremos excluidas de la vista" if _excl > 0 else ""
-            sec(f"Diagnóstico ROI vs Margen % · burbuja = cobertura de tiendas{_note}")
-            st.plotly_chart(pcfg(fig4, 380), use_container_width=True)
 
         # Drill-down individual
         st.divider()
@@ -2328,17 +2312,9 @@ with T[3]:
                 if len(df_dr)>=3:
                     last3 = df_dr.tail(3)["Ingresos"].tolist()
                     if last3[-1] < last3[0]*0.75:
-                        st.warning(f"⚠️ **Promo Fatigue**: los ingresos cayeron {(1-last3[-1]/last3[0])*100:.0f}% en los últimos 3 meses.")
+                        st.warning(f"**Promo Fatigue**: los ingresos cayeron {(1-last3[-1]/last3[0])*100:.0f}% en los últimos 3 meses.")
                     elif last3[-1] > last3[0]*1.20:
-                        st.success(f"📈 **Crecimiento sostenido**: +{(last3[-1]/last3[0]-1)*100:.0f}% en los últimos 3 meses.")
-
-            if not df_dt.empty:
-                sec(f"Top {top_n} Tiendas para esta Promo")
-                fig7 = px.bar(df_dt, x="Ingresos", y="Tiendas", orientation="h",
-                              color="Mg_pct", color_continuous_scale=SEQ_RG, text_auto=".2s")
-                fig7.update_layout(yaxis=dict(autorange="reversed"),
-                                   coloraxis_colorbar=dict(title="Margen %", tickformat=".0%"))
-                st.plotly_chart(pcfg(fig7, max(250,len(df_dt)*26),False), use_container_width=True)
+                        st.success(f"**Crecimiento sostenido**: +{(last3[-1]/last3[0]-1)*100:.0f}% en los últimos 3 meses.")
 
         sec("Ranking Completo de Promociones")
         df_t = df_ap.copy()
@@ -2396,36 +2372,6 @@ with T[4]:
         st.plotly_chart(pcfg(fig2, max(420, top_n*20), legend=False),
                         use_container_width=True)
 
-        if not df_ht.empty:
-            piv = df_ht.pivot(index="Tiendas", columns="Anio_mes", values="Ingresos").fillna(0)
-            # Filtrar filas con datos reales (al menos 30% de meses con ingresos)
-            min_meses = max(1, int(len(piv.columns) * 0.3))
-            piv = piv[(piv > 0).sum(axis=1) >= min_meses].head(min(top_n, 20))
-            if not piv.empty:
-                # Texto dentro de celdas en formato legible
-                def _heat_lbl(v):
-                    if v == 0: return ""
-                    if v >= 1e9: return f"${v/1e9:.1f}B"
-                    if v >= 1e6: return f"${v/1e6:.0f}M"
-                    return f"${v/1e3:.0f}K"
-                lbl_matrix = piv.map(_heat_lbl).values
-                fig3 = px.imshow(
-                    piv, color_continuous_scale=["#F8FAFC","#93C5FD","#1D4ED8"],
-                    aspect="auto", zmin=0, text_auto=False
-                )
-                fig3.update_traces(
-                    text=lbl_matrix, texttemplate="%{text}",
-                    textfont=dict(size=9, color="white"),
-                    hovertemplate="<b>Tienda %{y}</b><br>%{x}<br>Ingresos: $%{z:,.0f}<extra></extra>"
-                )
-                fig3.update_layout(
-                    coloraxis_colorbar=dict(title="Ingresos", tickformat="$~s", len=0.6),
-                    xaxis_title="", yaxis_title=""
-                )
-                sec("Mapa de calor — Ingresos por tienda y mes")
-                st.plotly_chart(pcfg(fig3, max(300, len(piv)*36), legend=False),
-                                use_container_width=True)
-
         sec("Detalle por Tienda")
         ds = df_tn.copy()
         ds["Ingresos"]    = ds["Ingresos"].apply(clp)
@@ -2441,7 +2387,7 @@ with T[4]:
         # ── Cobertura de Categorías por Tienda ──
         if not df_cobertura.empty:
             st.divider()
-            sec("🗺️ Cobertura por Categoría — N° tiendas activas")
+            sec("Cobertura por Categoría — N° tiendas activas")
             st.caption("Cuántas tiendas tienen venta real en cada categoría. Detecta categorías con baja distribución.")
 
             _max_t = df_cobertura["N_tiendas"].max() if not df_cobertura.empty else 1
@@ -2475,7 +2421,7 @@ with T[4]:
 
 # ══════════════════════════════════════════════ TAB 5: ALERTAS
 with T[5]:
-    st.markdown("### 🔔 Panel de Alertas de Pricing")
+    st.markdown("### Panel de Alertas de Pricing")
     st.caption("Revisa estos puntos prioritarios antes de tomar decisiones de precio.")
 
     if df_al.empty:
@@ -2490,18 +2436,18 @@ with T[5]:
 
         st.markdown(f"""
         <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:1rem">
-          <div class="chip-r">🔴 <b>{len(neg_mg)}</b> productos con margen negativo</div>
-          <div class="chip-a">🟡 <b>{len(low_mg)}</b> productos con margen &lt;5%</div>
-          <div class="chip-a">🟡 <b>{len(high_desc)}</b> productos con descuento &gt;30%</div>
-          <div class="chip-r">🔴 <b>{len(precio_bajo)}</b> productos precio &lt; costo</div>
-          <div class="chip-r">🔴 <b>{len(roi_bajo)}</b> promos con ROI &lt; 1×</div>
-          <div class="chip-a">🟡 <b>{len(desc_exc)}</b> promos con descuento &gt;40%</div>
+          <div class="chip-r"><b>{len(neg_mg)}</b> productos con margen negativo</div>
+          <div class="chip-a"><b>{len(low_mg)}</b> productos con margen &lt;5%</div>
+          <div class="chip-a"><b>{len(high_desc)}</b> productos con descuento &gt;30%</div>
+          <div class="chip-r"><b>{len(precio_bajo)}</b> productos precio &lt; costo</div>
+          <div class="chip-r"><b>{len(roi_bajo)}</b> promos con ROI &lt; 1×</div>
+          <div class="chip-a"><b>{len(desc_exc)}</b> promos con descuento &gt;40%</div>
         </div>""", unsafe_allow_html=True)
 
         a1,a2 = st.columns(2)
         with a1:
             if not neg_mg.empty:
-                sec(f"🔴 Productos con Margen NEGATIVO ({len(neg_mg)})")
+                sec(f"Productos con Margen NEGATIVO ({len(neg_mg)})")
                 d = neg_mg[["Producto","Categoria","Ingresos","Margen","Mg_pct","Costo_unit","Precio_ef"]].copy()
                 d["Ingresos"] = d["Ingresos"].apply(clp)
                 d["Margen"]   = d["Margen"].apply(clp)
@@ -2511,10 +2457,10 @@ with T[5]:
                 st.dataframe(d[["Producto","Categoria","Ingresos","Margen","Mg_pct","Costo","Precio"]],
                              use_container_width=True, hide_index=True, height=220)
             else:
-                st.success("✅ No hay productos con margen negativo.")
+                st.success("No hay productos con margen negativo.")
 
             if not precio_bajo.empty:
-                sec(f"🔴 Precio de venta MENOR al costo ({len(precio_bajo)})")
+                sec(f"Precio de venta MENOR al costo ({len(precio_bajo)})")
                 d2 = precio_bajo[["Producto","Categoria","Precio_ef","Costo_unit","Ingresos"]].copy()
                 d2["Gap"] = d2["Precio_ef"]-d2["Costo_unit"]
                 d2 = d2.sort_values("Gap")
@@ -2527,7 +2473,7 @@ with T[5]:
 
         with a2:
             if not roi_bajo.empty:
-                sec(f"🔴 Promos con ROI &lt; 1× — pierden dinero ({len(roi_bajo)})")
+                sec(f"Promos con ROI &lt; 1× — pierden dinero ({len(roi_bajo)})")
                 d3 = roi_bajo[["Promo","Ingresos","Inversion","ROI","Desc_pct","Mg_pct"]].copy()
                 d3["Ingresos"]  = d3["Ingresos"].apply(clp)
                 d3["Inversion"] = d3["Inversion"].apply(clp)
@@ -2536,10 +2482,10 @@ with T[5]:
                 d3["Mg_pct"]    = d3["Mg_pct"].apply(lambda x: f"{x*100:.1f}%")
                 st.dataframe(d3, use_container_width=True, hide_index=True, height=200)
             else:
-                st.success("✅ Todas las promos tienen ROI ≥ 1×.")
+                st.success("Todas las promos tienen ROI ≥ 1×.")
 
             if not low_mg.empty:
-                sec(f"🟡 Productos con Margen &lt; 5% — {len(low_mg)}")
+                sec(f"Productos con Margen &lt; 5% — {len(low_mg)}")
                 d4 = low_mg[["Producto","Categoria","Ingresos","Mg_pct"]].copy()
                 d4["Ingresos"] = d4["Ingresos"].apply(clp)
                 d4["Mg_pct"]   = d4["Mg_pct"].apply(lambda x: f"{x*100:.2f}%")
@@ -2630,14 +2576,14 @@ with T[5]:
 
 # ══════════════════════════════════════════════ TAB 6: CRUCES
 with T[6]:
-    st.markdown("### 🔀 Análisis Cruzado de Pricing")
+    st.markdown("### Análisis Cruzado de Pricing")
     st.caption("Combina dimensiones para detectar problemas y oportunidades de precio.")
 
     # ══════════════════════════════════════════════════════════
     #  SECCIÓN 1 — MARGEN POR CATEGORÍA × MES
     # ══════════════════════════════════════════════════════════
     st.divider()
-    st.markdown("#### 📅 Sección 1 — Evolución del Margen por Categoría y Mes")
+    st.markdown("#### Sección 1 — Evolución del Margen por Categoría y Mes")
     st.caption("Detecta qué categorías están mejorando o deteriorando su rentabilidad en el tiempo.")
 
     if not df_mg_cat_mes.empty:
@@ -2682,13 +2628,13 @@ with T[6]:
                 }).dropna()
                 df_tend["Delta"] = df_tend["Mg_fin"] - df_tend["Mg_inicio"]
                 df_tend["Tendencia"] = df_tend["Delta"].apply(
-                    lambda x: "🟢 Mejorando" if x > 0.01 else ("🔴 Deteriorando" if x < -0.01 else "🟡 Estable"))
+                    lambda x: "Mejorando" if x > 0.01 else ("Deteriorando" if x < -0.01 else "Estable"))
                 df_tend = df_tend.sort_values("Delta")
                 df_tend["lbl"] = df_tend["Delta"].apply(lambda x: f"{x*100:+.1f}pp")
                 fig_tend = px.bar(
                     df_tend, x="Delta", y="Categoria", orientation="h",
                     color="Tendencia",
-                    color_discrete_map={"🟢 Mejorando":C_GREEN,"🔴 Deteriorando":C_RED,"🟡 Estable":C_AMBER},
+                    color_discrete_map={"Mejorando":C_GREEN,"Deteriorando":C_RED,"Estable":C_AMBER},
                     text="lbl",
                     custom_data=["Mg_inicio","Mg_fin"]
                 )
@@ -2744,30 +2690,30 @@ with T[6]:
     #  SECCIÓN 2 — DESCUENTO × MARGEN (ZONA DE PELIGRO)
     # ══════════════════════════════════════════════════════════
     st.divider()
-    st.markdown("#### ⚠️ Sección 2 — Cruce Descuento % × Margen % por Producto")
+    st.markdown("#### Sección 2 — Cruce Descuento % × Margen % por Producto")
     st.caption("Identifica productos en la zona de peligro: alto descuento con margen bajo o negativo.")
 
     if not df_desc_mg.empty:
         _dm = df_desc_mg.copy()
         _dm = _dm[_dm["Desc_pct"].between(0, 1) & _dm["Mg_pct"].between(-0.5, 1.0)]
         _dm["Zona"] = _dm.apply(lambda r:
-            "🔴 Peligro: desc. alto + margen bajo" if r["Desc_pct"] > 0.20 and r["Mg_pct"] < 0.15
-            else ("🟢 Ideal: desc. bajo + margen alto"  if r["Desc_pct"] <= 0.20 and r["Mg_pct"] >= 0.15
-            else ("🟡 Alto margen con descuento alto"   if r["Desc_pct"] > 0.20 and r["Mg_pct"] >= 0.15
-            else "⚪ Sin descuento significativo")), axis=1)
+            "Peligro: desc. alto + margen bajo" if r["Desc_pct"] > 0.20 and r["Mg_pct"] < 0.15
+            else ("Ideal: desc. bajo + margen alto"  if r["Desc_pct"] <= 0.20 and r["Mg_pct"] >= 0.15
+            else ("Alto margen con descuento alto"   if r["Desc_pct"] > 0.20 and r["Mg_pct"] >= 0.15
+            else "Sin descuento significativo")), axis=1)
         zona_col = {
-            "🔴 Peligro: desc. alto + margen bajo": C_RED,
-            "🟢 Ideal: desc. bajo + margen alto":   C_GREEN,
-            "🟡 Alto margen con descuento alto":     C_AMBER,
-            "⚪ Sin descuento significativo":         C_GRAY,
+            "Peligro: desc. alto + margen bajo": C_RED,
+            "Ideal: desc. bajo + margen alto":   C_GREEN,
+            "Alto margen con descuento alto":     C_AMBER,
+            "Sin descuento significativo":         C_GRAY,
         }
-        n_peligro = len(_dm[_dm["Zona"].str.startswith("🔴")])
-        n_ideal   = len(_dm[_dm["Zona"].str.startswith("🟢")])
+        n_peligro = len(_dm[_dm["Zona"].str.startswith("Peligro")])
+        n_ideal   = len(_dm[_dm["Zona"].str.startswith("Ideal")])
 
         st.markdown(f"""
         <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:.8rem">
-          <div class="chip-r">🔴 <b>{n_peligro}</b> productos en zona de peligro</div>
-          <div class="chip-g">🟢 <b>{n_ideal}</b> productos en zona ideal</div>
+          <div class="chip-r"><b>{n_peligro}</b> productos en zona de peligro</div>
+          <div class="chip-g"><b>{n_ideal}</b> productos en zona ideal</div>
         </div>""", unsafe_allow_html=True)
 
         c1_s2, c2_s2 = st.columns([3, 2])
@@ -2799,9 +2745,9 @@ with T[6]:
                               fillcolor="rgba(200,16,46,0.06)", line_width=0)
             fig_sc2.add_shape(type="rect", x0=0, x1=0.20, y0=0.15, y1=1.0,
                               fillcolor="rgba(26,158,92,0.06)", line_width=0)
-            fig_sc2.add_annotation(x=0.60, y=-0.30, text="⚠️ Zona de peligro",
+            fig_sc2.add_annotation(x=0.60, y=-0.30, text="Zona de peligro",
                                    showarrow=False, font=dict(color=C_RED, size=11))
-            fig_sc2.add_annotation(x=0.05, y=0.80, text="🎯 Zona ideal",
+            fig_sc2.add_annotation(x=0.05, y=0.80, text="Zona ideal",
                                    showarrow=False, font=dict(color=C_GREEN, size=11))
             fig_sc2.update_xaxes(tickformat=".0%", title="Descuento % (precio lista → efectivo)")
             fig_sc2.update_yaxes(tickformat=".0%", title="Margen % sobre ingresos")
@@ -2810,7 +2756,7 @@ with T[6]:
 
         with c2_s2:
             # Top productos en zona peligro
-            df_peligro = _dm[_dm["Zona"].str.startswith("🔴")].nlargest(top_n, "Ingresos").copy()
+            df_peligro = _dm[_dm["Zona"].str.startswith("Peligro")].nlargest(top_n, "Ingresos").copy()
             if not df_peligro.empty:
                 df_peligro["lbl"] = df_peligro.apply(
                     lambda r: f"Desc {r['Desc_pct']*100:.0f}% · Mg {r['Mg_pct']*100:.1f}%", axis=1)
@@ -2834,17 +2780,17 @@ with T[6]:
                     xaxis=dict(tickprefix="$", tickformat="~s"),
                     coloraxis_colorbar=dict(title="Desc %", tickformat=".0%")
                 )
-                sec(f"⚠️ Productos zona peligro con mayor exposición ({len(df_peligro)})")
+                sec(f"Productos zona peligro con mayor exposición ({len(df_peligro)})")
                 st.plotly_chart(pcfg(fig_pel, max(300, len(df_peligro)*30), legend=False),
                                 use_container_width=True)
             else:
-                st.success("✅ No hay productos en zona de peligro.")
+                st.success("No hay productos en zona de peligro.")
 
     # ══════════════════════════════════════════════════════════
     #  SECCIÓN 3 — CATEGORÍA × PROMOCIÓN × RENTABILIDAD
     # ══════════════════════════════════════════════════════════
     st.divider()
-    st.markdown("#### 🎯 Sección 3 — Intensidad Promocional vs Rentabilidad por Categoría")
+    st.markdown("#### Sección 3 — Intensidad Promocional vs Rentabilidad por Categoría")
     st.caption("¿Las categorías con más promoción tienen mejor o peor margen?")
 
     if not df_cat_promo.empty:
@@ -2917,7 +2863,7 @@ with T[6]:
         _cp_t["Mix Promo"]  = _cp_t["Mix_promo"].apply(lambda x: f"{x*100:.1f}%")
         _cp_t["Descuento %"]= _cp_t["Desc_pct"].apply(lambda x: f"{x*100:.1f}%")
         _cp_t["Estado"]     = _cp_t["Mg_pct"].apply(lambda x:
-            "🟢" if x >= 0.20 else ("🟡" if x >= 0.10 else "🔴"))
+            "OK" if x >= 0.20 else ("MED" if x >= 0.10 else "LOW"))
         st.dataframe(_cp_t[["Estado","Categoria","Ingresos","Margen %","Mix Promo","Descuento %"]],
                      use_container_width=True, hide_index=True, height=250)
 
@@ -2925,7 +2871,7 @@ with T[6]:
     #  SECCIÓN 4 — BRECHA PRECIO LISTA vs EFECTIVO
     # ══════════════════════════════════════════════════════════
     st.divider()
-    st.markdown("#### 💲 Sección 4 — Brecha Precio Lista vs Precio Efectivo")
+    st.markdown("#### Sección 4 — Brecha Precio Lista vs Precio Efectivo")
     st.caption("Cuánto descuento real se está aplicando. La brecha es el dinero que se deja sobre la mesa.")
 
     if not df_precio_gap.empty:
@@ -3014,7 +2960,7 @@ with T[6]:
     #  SECCIÓN 5 — ELASTICIDAD PRECIO-VOLUMEN POR CATEGORÍA
     # ══════════════════════════════════════════════════════════
     st.divider()
-    st.markdown("#### 📐 Sección 5 — Relación Precio vs Volumen (Elasticidad aproximada)")
+    st.markdown("#### Sección 5 — Relación Precio vs Volumen (Elasticidad aproximada)")
     st.caption("¿Cuando el precio baja, el volumen sube? Identifica categorías con mayor sensibilidad al precio.")
 
     if not df_pev.empty and len(df_pev["Anio_mes"].unique()) >= 3:
@@ -3040,9 +2986,9 @@ with T[6]:
             c1_s5, c2_s5 = st.columns([2, 1])
             with c1_s5:
                 df_elast["Tipo"] = df_elast["Correlacion"].apply(
-                    lambda x: "🔵 Elástica (precio↑ → vol↓)" if x < -0.3
-                    else ("🟠 Inelástica (precio no afecta vol)" if x > 0.3
-                    else "⚪ Sin correlación clara"))
+                    lambda x: "Elástica (precio↑ → vol↓)" if x < -0.3
+                    else ("Inelástica (precio no afecta vol)" if x > 0.3
+                    else "Sin correlación clara"))
                 df_elast["lbl"] = df_elast["Correlacion"].apply(lambda x: f"{x:+.2f}")
                 fig_el = px.bar(
                     df_elast, x="Correlacion", y="Categoria", orientation="h",
@@ -3082,13 +3028,13 @@ with T[6]:
                 <div style="background:#F8FAFC;border-radius:10px;padding:1rem;margin-top:2rem;
                             border-left:3px solid #003B7A;font-size:.82rem;line-height:1.6">
                 <b>Cómo leer este gráfico:</b><br><br>
-                🔵 <b>Correlación negativa (azul)</b><br>
+                <b>Correlación negativa (azul)</b><br>
                 La categoría es <b>elástica</b>: cuando el precio sube, el volumen baja.<br>
                 → Considera subir precio con cuidado.<br><br>
-                🔴 <b>Correlación positiva (roja)</b><br>
+                <b>Correlación positiva (roja)</b><br>
                 La categoría es <b>inelástica</b> o tiene estacionalidad que mueve ambas variables.<br>
                 → Precio tiene menos impacto en demanda.<br><br>
-                ⚪ <b>Cercano a 0</b><br>
+                <b>Cercano a 0</b><br>
                 Sin correlación clara. Puede haber otros factores (temporada, mix de tiendas).<br><br>
                 <i>*Correlación de Pearson calculada entre precio efectivo mensual y unidades vendidas.</i>
                 </div>""", unsafe_allow_html=True)
@@ -3097,11 +3043,11 @@ with T[6]:
     #  SECCIÓN 6 — PENETRACIÓN PROMO vs SIN PROMO
     # ══════════════════════════════════════════════════════════
     st.divider()
-    st.markdown("#### 📊 Sección 6 — Penetración Promo vs Sin Promo por Producto")
+    st.markdown("#### Sección 6 — Penetración Promo vs Sin Promo por Producto")
     st.caption("Para cada producto: qué % de sus ventas ocurrió bajo una promoción activa vs sin promo.")
 
     if df_pen_prod.empty:
-        st.warning("⚠️ Recalcula el caché para generar este análisis (botón en el sidebar).")
+        st.warning("Recalcula el caché para generar este análisis (botón en el sidebar).")
     else:
         # KPIs globales de penetración
         _tot_cant     = df_pen_prod["Cant_total"].sum()
@@ -3236,12 +3182,12 @@ with T[6]:
             # Gráfico de barras agrupadas: cant promo vs sin promo
             fig_pp = go.Figure()
             fig_pp.add_trace(go.Bar(
-                name="Sin Promo 🔵", x=top_pen["Cant_sin_promo"], y=top_pen["Producto"],
+                name="Sin Promo", x=top_pen["Cant_sin_promo"], y=top_pen["Producto"],
                 orientation="h", marker_color=C_NAVY, opacity=0.85, marker_line_width=0,
                 hovertemplate="<b>%{y}</b><br>Sin promo: %{x:,.0f} un.<extra></extra>"
             ))
             fig_pp.add_trace(go.Bar(
-                name="Con Promo 🔴", x=top_pen["Cant_promo"], y=top_pen["Producto"],
+                name="Con Promo", x=top_pen["Cant_promo"], y=top_pen["Producto"],
                 orientation="h", marker_color=C_RED, opacity=0.85, marker_line_width=0,
                 text=top_pen["lbl"],
                 textposition="outside", textfont_size=9.5,
@@ -3298,7 +3244,7 @@ with T[6]:
         _pp_show["Un. Sin Promo"]   = _pp_show["Cant_sin_promo"].apply(lambda x: f"{int(x):,}".replace(",","."))
         _pp_show["Un. Total"]       = _pp_show["Cant_total"].apply(lambda x: f"{int(x):,}".replace(",","."))
         _pp_show["Alerta"] = _pp_show["Penetracion"].apply(
-            lambda x: "🔴 Muy alta" if x > 0.7 else ("🟡 Alta" if x > 0.4 else ("🟢 Normal" if x > 0.1 else "⚪ Sin promo")))
+            lambda x: "Muy alta" if x > 0.7 else ("Alta" if x > 0.4 else ("Normal" if x > 0.1 else "Sin promo")))
         st.dataframe(
             _pp_show[["Alerta","Producto","Categoria","Penetración %",
                        "Un. Promo","Un. Sin Promo","Un. Total",
@@ -3312,7 +3258,7 @@ with T[6]:
 with T[6]:
     if not df_price_ladder.empty:
         st.divider()
-        st.markdown("#### 💲 Sección 7 — Price Ladder por Categoría")
+        st.markdown("#### Sección 7 — Price Ladder por Categoría")
         st.caption("Posicionamiento de precio de cada SKU dentro de su categoría. Detecta gaps, solapamiento y oportunidades.")
 
         _pl_cats = sorted(df_price_ladder["Categoria"].unique().tolist())
@@ -3372,507 +3318,540 @@ with T[6]:
             )
 
 with T[7]:
-    st.markdown("### 📣 Análisis Promocional Completo")
-    st.caption("Profundización en tickets, SKUs por promo, distribución por ciclo y categoría.")
+    st.markdown("### Análisis Promocional Avanzado")
+    st.caption("Penetración, ranking, modalidades y evolución por ciclo, categoría y producto.")
 
-    # ══════════════════════════════════════════════════════════
-    #  SECCIÓN A — TICKET PROMEDIO CON PROMO vs SIN PROMO
-    # ══════════════════════════════════════════════════════════
+    # ══════════════════════════════════════════════════════════════════════
+    #  KPIs GLOBALES DE PROMO
+    # ══════════════════════════════════════════════════════════════════════
     st.divider()
-    st.markdown("#### 🧾 Sección A — Ticket Promedio: Con Promo vs Sin Promo")
-    st.caption("¿Las boletas con promoción tienen mayor o menor valor que las boletas sin promo?")
+    _kpi_ing_total  = df_sku_promo["Ingresos"].sum()  if not df_sku_promo.empty else 0
+    _kpi_uni_promo  = df_sku_promo["Unidades"].sum()  if not df_sku_promo.empty else 0
+    _kpi_n_promos   = len(df_sku_promo)               if not df_sku_promo.empty else 0
+    _kpi_uni_total  = df_pen_cat_promo["Unidades_total"].sum() if not df_pen_cat_promo.empty else 0
+    _kpi_uni_sin    = (_kpi_uni_total - _kpi_uni_promo) if _kpi_uni_total > 0 else 0
+    _kpi_pen_pct    = (_kpi_uni_promo / _kpi_uni_total) if _kpi_uni_total > 0 else 0
+
+    # Transacciones reales usando catálogo
+    if not df_catalogo.empty and not df_sku_promo.empty:
+        _join_k = df_sku_promo.merge(
+            df_catalogo[["Cod_promo","Unidades_por_promo"]],
+            on="Cod_promo", how="left"
+        )
+        _join_k["Unidades_por_promo"] = _join_k["Unidades_por_promo"].fillna(1)
+        _kpi_transacciones = (_join_k["Unidades"] / _join_k["Unidades_por_promo"]).sum()
+    else:
+        _kpi_transacciones = _kpi_uni_promo
+
+    kk = st.columns(6)
+    kpi(kk[0], clp(_kpi_ing_total),            "Ingresos en promo")
+    kpi(kk[1], f"{int(_kpi_uni_total):,}".replace(",","."), "Unidades totales")
+    kpi(kk[2], f"{int(_kpi_uni_promo):,}".replace(",","."), "Unidades en promo", "g" if _kpi_uni_promo>0 else "")
+    kpi(kk[3], f"{int(_kpi_uni_sin):,}".replace(",","."),   "Unidades sin promo")
+    kpi(kk[4], f"{_kpi_pen_pct*100:.1f}%",     "Penetración promo", "g" if _kpi_pen_pct>=0.3 else "a")
+    kpi(kk[5], f"{int(_kpi_transacciones):,}".replace(",","."), "Transacciones promo reales")
+
+    # ══════════════════════════════════════════════════════════════════════
+    #  SECCION A — RANKING DE PROMOCIONES
+    # ══════════════════════════════════════════════════════════════════════
+    st.divider()
+    st.markdown("#### Ranking de Promociones")
+    st.caption("Ordenado por transacciones reales vendidas. Penetración calculada sobre el total del período activo.")
+
+    if not df_sku_promo.empty:
+        rk_f1, rk_f2, rk_f3, rk_f4 = st.columns([2,2,1,2])
+        with rk_f1:
+            rk_cat = st.selectbox("Categoria", ["(Todas)"] + sorted(df_sku_promo["Categoria"].dropna().unique().tolist()), key="ap_rk_cat")
+        with rk_f2:
+            rk_ord = st.selectbox("Ordenar por", ["Transacciones","Unidades","Ingresos","Penetracion","Participacion"], key="ap_rk_ord")
+        with rk_f3:
+            rk_top = st.slider("Top N", 5, 50, 20, key="ap_rk_top")
+        with rk_f4:
+            rk_prod = st.text_input("Buscar producto", placeholder="ej: Monster 473", key="ap_rk_prod")
+
+        _rk = df_sku_promo.copy()
+        if rk_cat != "(Todas)": _rk = _rk[_rk["Categoria"] == rk_cat]
+        if rk_prod.strip():     _rk = _rk[_rk["Promo"].str.contains(rk_prod.strip(), case=False, na=False)]
+
+        # Calcular Transacciones usando catálogo
+        if not df_catalogo.empty:
+            _rk = _rk.merge(df_catalogo[["Cod_promo","Unidades_por_promo","Formato_promo"]], on="Cod_promo", how="left")
+            _rk["Unidades_por_promo"] = _rk["Unidades_por_promo"].fillna(1)
+            _rk["Formato_promo"] = _rk["Formato_promo"].fillna("–")
+        else:
+            _rk["Unidades_por_promo"] = 1
+            _rk["Formato_promo"] = "–"
+
+        _rk["Transacciones"] = (_rk["Unidades"] / _rk["Unidades_por_promo"]).round(0).astype(int)
+
+        # Penetración sobre total del filtro activo
+        _base_uni = _rk["Unidades"].sum() if not _rk.empty else 0
+        _rk["Penetracion"] = (_rk["Unidades"] / _base_uni) if _base_uni > 0 else 0
+        _rk["Participacion"] = (_rk["Transacciones"] / _rk["Transacciones"].sum()) if _rk["Transacciones"].sum() > 0 else 0
+
+        _ord_col = {"Transacciones":"Transacciones","Unidades":"Unidades","Ingresos":"Ingresos",
+                    "Penetracion":"Penetracion","Participacion":"Participacion"}.get(rk_ord,"Transacciones")
+        _rk = _rk.nlargest(rk_top, _ord_col).copy()
+
+        if not _rk.empty:
+            c1_rk, c2_rk = st.columns([3, 2])
+            with c1_rk:
+                # Tabla detalle
+                _rk_t = _rk.copy()
+                _rk_t["Ingresos"]      = _rk_t["Ingresos"].apply(clp)
+                _rk_t["Unidades"]      = _rk_t["Unidades"].apply(lambda x: f"{int(x):,}".replace(",","."))
+                _rk_t["Transacciones"] = _rk_t["Transacciones"].apply(lambda x: f"{int(x):,}".replace(",","."))
+                _rk_t["Pack"]          = _rk_t["Unidades_por_promo"].astype(str) + "x"
+                _rk_t["Penetracion"]   = _rk_t["Penetracion"].apply(lambda x: f"{x*100:.1f}%")
+                _rk_t["Participacion"] = _rk_t["Participacion"].apply(lambda x: f"{x*100:.1f}%")
+                _rk_t["Margen"]        = _rk_t["Mg_pct"].apply(lambda x: f"{x*100:.1f}%")
+                _rk_t["Tiendas"]       = _rk_t["Tiendas"].apply(lambda x: f"{int(x)}")
+                _rk_t["Período"]       = _rk_t["Primer_mes"] + " → " + _rk_t["Ultimo_mes"]
+                sec("Ranking — Transacciones reales / Unidades / Penetración / Participación")
+                st.dataframe(
+                    _rk_t[["Promo","Categoria","Formato_promo","Pack","Transacciones",
+                            "Unidades","Ingresos","Penetracion","Participacion","Margen","Tiendas","Período"]],
+                    use_container_width=True, hide_index=True, height=420,
+                    column_config={
+                        "Promo": st.column_config.TextColumn("Promoción", width=220),
+                        "Formato_promo": st.column_config.TextColumn("Formato"),
+                    }
+                )
+
+            with c2_rk:
+                # Dos tortas: ingresos y transacciones
+                _pie_names = _rk["Promo"].tolist()
+                _pie_ing   = _rk["Ingresos"].tolist()
+                _pie_tran  = _rk["Transacciones"].tolist()
+                _n_colors  = len(_rk)
+                _palette   = [C_RED, C_NAVY, C_AMBER, C_GREEN, C_BLUE2, C_GRAY,
+                               "#7B2D8B","#00838F","#E64A19","#558B2F",
+                               "#AD1457","#1565C0","#F57F17","#2E7D32","#6A1B9A",
+                               "#00695C","#4527A0","#00838F","#BF360C","#37474F"][:_n_colors]
+
+                fig_pie_ing = go.Figure(go.Pie(
+                    labels=_pie_names, values=_pie_ing, hole=0.45,
+                    marker=dict(colors=_palette, line=dict(color="white", width=1.5)),
+                    texttemplate="%{percent:.1%}", textfont_size=9, sort=False,
+                    hovertemplate="<b>%{label}</b><br>Ingresos: $%{value:,.0f}<br>%{percent:.1%}<extra></extra>"
+                ))
+                _tot_ing = sum(_pie_ing)
+                _lbl_ing = (f"<b>${_tot_ing/1e9:.1f}B</b>" if _tot_ing>=1e9
+                            else f"<b>${_tot_ing/1e6:.1f}M</b>" if _tot_ing>=1e6
+                            else f"<b>${_tot_ing/1e3:.0f}K</b>")
+                fig_pie_ing.update_layout(showlegend=False,
+                    annotations=[dict(text=f"{_lbl_ing}<br><span style='font-size:10px'>Ingresos</span>",
+                                      x=0.5, y=0.5, font_size=13, showarrow=False, font=dict(color=C_NAVY))])
+                sec("Mix por Ingresos")
+                st.plotly_chart(pcfg(fig_pie_ing, 280, legend=False), use_container_width=True)
+
+                fig_pie_tr = go.Figure(go.Pie(
+                    labels=_pie_names, values=_pie_tran, hole=0.45,
+                    marker=dict(colors=_palette, line=dict(color="white", width=1.5)),
+                    texttemplate="%{percent:.1%}", textfont_size=9, sort=False,
+                    hovertemplate="<b>%{label}</b><br>Transacciones: %{value:,.0f}<br>%{percent:.1%}<extra></extra>"
+                ))
+                _tot_tr = sum(_pie_tran)
+                _lbl_tr = f"<b>{_tot_tr/1e3:.1f}K</b>" if _tot_tr>=1e3 else f"<b>{int(_tot_tr):,}</b>"
+                fig_pie_tr.update_layout(showlegend=False,
+                    annotations=[dict(text=f"{_lbl_tr}<br><span style='font-size:10px'>Transacciones</span>",
+                                      x=0.5, y=0.5, font_size=13, showarrow=False, font=dict(color=C_NAVY))])
+                sec("Mix por Transacciones reales")
+                st.plotly_chart(pcfg(fig_pie_tr, 280, legend=False), use_container_width=True)
+
+    # ══════════════════════════════════════════════════════════════════════
+    #  SECCION B — PENETRACIÓN POR CATEGORÍA
+    # ══════════════════════════════════════════════════════════════════════
+    st.divider()
+    st.markdown("#### Penetración de Promociones por Categoría")
+    st.caption("Qué porcentaje de las unidades de cada categoría se vendió bajo alguna promoción.")
+
+    if not df_pen_cat_promo.empty:
+        _pc = df_pen_cat_promo.copy()
+        _pc["Penetracion"] = _pc["Unidades_promo"] / _pc["Unidades_total"].replace(0, np.nan)
+        _pc["Pct_sin"]     = 1 - _pc["Penetracion"].fillna(0)
+        _pc = _pc.sort_values("Penetracion", ascending=False).head(20)
+
+        c1_pen, c2_pen = st.columns(2)
+        with c1_pen:
+            fig_pen = go.Figure()
+            fig_pen.add_trace(go.Bar(
+                name="Con promo", x=_pc["Categoria"], y=_pc["Penetracion"],
+                marker_color=C_RED, marker_line_width=0, opacity=0.88,
+                hovertemplate="<b>%{x}</b><br>Con promo: %{y:.1%}<extra></extra>"
+            ))
+            fig_pen.add_trace(go.Bar(
+                name="Sin promo", x=_pc["Categoria"], y=_pc["Pct_sin"],
+                marker_color=C_NAVY, marker_line_width=0, opacity=0.7,
+                hovertemplate="<b>%{x}</b><br>Sin promo: %{y:.1%}<extra></extra>"
+            ))
+            fig_pen.update_layout(
+                barmode="stack",
+                xaxis=dict(tickangle=-35, title=""),
+                yaxis=dict(title="% Unidades", tickformat=".0%", gridcolor="#F3F4F6"),
+                legend=dict(orientation="h", y=1.08, font_size=10)
+            )
+            sec("Penetración Promo por Categoría — unidades con promo vs sin promo")
+            st.plotly_chart(pcfg(fig_pen, 320, legend=False), use_container_width=True)
+
+        with c2_pen:
+            # Tabla resumen
+            _pc_t = _pc[["Categoria","Unidades_total","Unidades_promo","Unidades_sin_promo","Penetracion","Ingresos_promo"]].copy()
+            _pc_t["Unidades_total"]    = _pc_t["Unidades_total"].apply(lambda x: f"{int(x):,}".replace(",","."))
+            _pc_t["Unidades_promo"]    = _pc_t["Unidades_promo"].apply(lambda x: f"{int(x):,}".replace(",","."))
+            _pc_t["Unidades_sin_promo"]= _pc_t["Unidades_sin_promo"].apply(lambda x: f"{int(x):,}".replace(",","."))
+            _pc_t["Penetracion"]       = _pc_t["Penetracion"].apply(lambda x: f"{x*100:.1f}%")
+            _pc_t["Ingresos_promo"]    = _pc_t["Ingresos_promo"].apply(clp)
+            _pc_t.columns = ["Categoría","Unidades Total","Con Promo","Sin Promo","Penetración","Ingresos Promo"]
+            sec("Detalle por Categoría")
+            st.dataframe(_pc_t, use_container_width=True, hide_index=True, height=380)
+
+    # ══════════════════════════════════════════════════════════════════════
+    #  SECCION C — DISTRIBUCIÓN POR MODALIDAD DE VENTA
+    # ══════════════════════════════════════════════════════════════════════
+    st.divider()
+    st.markdown("#### Distribución por Modalidad de Venta")
+    st.caption("Cómo se distribuyen las unidades vendidas según la mecánica de venta (individual, 2x, 3x, combo, cruzada, etc.).")
+
+    if not df_modalidad.empty:
+        md_f1, md_f2 = st.columns([2, 2])
+        with md_f1:
+            md_cat = st.selectbox("Categoria", ["(Todas)"] + sorted(df_modalidad["Categoria"].dropna().unique().tolist()), key="md_cat")
+        with md_f2:
+            md_met = st.selectbox("Métrica", ["Unidades","Ingresos"], key="md_met")
+
+        _md = df_modalidad.copy()
+        if md_cat != "(Todas)": _md = _md[_md["Categoria"] == md_cat]
+        _md = _md.groupby("Modalidad")[[md_met]].sum().reset_index().sort_values(md_met, ascending=False)
+
+        c1_md, c2_md = st.columns(2)
+        _md_palette = [C_NAVY, C_RED, C_AMBER, C_GREEN, C_BLUE2, C_GRAY,
+                        "#7B2D8B","#00838F","#E64A19","#558B2F"][:len(_md)]
+
+        with c1_md:
+            fig_md_pie = go.Figure(go.Pie(
+                labels=_md["Modalidad"], values=_md[md_met], hole=0.45,
+                marker=dict(colors=_md_palette, line=dict(color="white", width=1.5)),
+                texttemplate="%{label}<br><b>%{percent:.1%}</b>", textfont_size=9, sort=False,
+                hovertemplate=(f"<b>%{{label}}</b><br>{md_met}: %{{value:,.0f}}<br>%{{percent:.1%}}<extra></extra>")
+            ))
+            _tot_md = _md[md_met].sum()
+            _fmt_md = clp(_tot_md) if md_met == "Ingresos" else f"{int(_tot_md):,}".replace(",",".")
+            fig_md_pie.update_layout(showlegend=False,
+                annotations=[dict(text=f"<b>{_fmt_md}</b><br><span style='font-size:10px'>Total {md_met}</span>",
+                                  x=0.5, y=0.5, font_size=13, showarrow=False, font=dict(color=C_NAVY))])
+            sec(f"Distribución por Modalidad — {md_met}")
+            st.plotly_chart(pcfg(fig_md_pie, 340, legend=False), use_container_width=True)
+
+        with c2_md:
+            _md_s = _md.sort_values(md_met, ascending=True)
+            _md_s["lbl"] = _md_s[md_met].apply(
+                lambda v: clp(v) if md_met=="Ingresos" else f"{int(v):,}".replace(",","."))
+            fig_md_bar = go.Figure(go.Bar(
+                x=_md_s[md_met], y=_md_s["Modalidad"], orientation="h",
+                marker_color=C_NAVY, marker_line_width=0, opacity=0.85,
+                text=_md_s["lbl"], textposition="inside", textfont=dict(size=9, color="white"),
+                hovertemplate=f"<b>%{{y}}</b><br>{md_met}: %{{x:,.0f}}<extra></extra>"
+            ))
+            fig_md_bar.update_layout(
+                xaxis=dict(title=md_met, tickformat="~s"),
+                yaxis=dict(title="")
+            )
+            sec(f"Ranking por Modalidad — {md_met}")
+            st.plotly_chart(pcfg(fig_md_bar, 340, legend=False), use_container_width=True)
+
+    # ══════════════════════════════════════════════════════════════════════
+    #  SECCION D — EVOLUTIVOS CON GRANULARIDAD
+    # ══════════════════════════════════════════════════════════════════════
+    st.divider()
+    st.markdown("#### Evolución — Diario / Semanal / Mensual / Ciclo")
+    st.caption("Selecciona la granularidad temporal y la métrica para analizar tendencias históricas.")
+
+    if not df_evo_ciclo.empty or not ddia.empty:
+        ev_f1, ev_f2, ev_f3, ev_f4, ev_f5 = st.columns([2, 2, 2, 2, 1])
+        with ev_f1:
+            _ev_cats = sorted(df_evo_ciclo["Categoria"].dropna().unique().tolist()) if not df_evo_ciclo.empty else []
+            ev_cat  = st.selectbox("Categoria", ["(Todas)"] + _ev_cats, key="ev_cat")
+        with ev_f2:
+            ev_met  = st.selectbox("Métrica", ["Ingresos","Unidades","N_promos"], key="ev_met")
+        with ev_f3:
+            ev_desg = st.selectbox("Desglosar por", ["Ninguno","Categoria","Promo"], key="ev_desg")
+        with ev_f4:
+            ev_prod = st.text_input("Filtrar promo/producto", placeholder="ej: Monster", key="ev_prod")
+        with ev_f5:
+            ev_gran = st.selectbox("Granularidad", ["Ciclo","Mensual","Semanal","Diario"], key="ev_gran")
+
+        _ylab_map = {"Ingresos":"Ingresos ($)", "Unidades":"Unidades", "N_promos":"N° Promos distintas"}
+        _ylab = _ylab_map.get(ev_met, ev_met)
+        _palette_evo = [C_NAVY, C_RED, C_AMBER, C_GREEN, C_BLUE2, C_GRAY,
+                        "#7B2D8B","#00838F","#E64A19","#558B2F","#AD1457","#1565C0"]
+
+        # ── Fuente de datos según granularidad ──
+        if ev_gran in ("Diario","Semanal"):
+            if ddia.empty:
+                st.info("Datos diarios no disponibles aún. Recalcula el cache desde el sidebar para habilitar granularidad Diaria y Semanal.")
+            else:
+                _src = ddia.copy()
+                if ev_cat != "(Todas)" and "Categoria" in _src.columns:
+                    _src = _src[_src["Categoria"] == ev_cat]
+                if ev_prod.strip() and "Nom_promo" in _src.columns:
+                    _src = _src[_src["Nom_promo"].str.contains(ev_prod.strip(), case=False, na=False)]
+                _src["Periodo"] = _src["Fecha"] if ev_gran == "Diario" else _src["Semana"]
+
+                _desg_col_src = "Categoria" if ev_desg == "Categoria" else ("Nom_promo" if ev_desg == "Promo" else None)
+                _grp_src = ["Periodo"] + ([_desg_col_src] if _desg_col_src else [])
+
+                if ev_met == "N_promos":
+                    _ev_g = _src.groupby(_grp_src)["Nom_promo"].nunique().reset_index()
+                    _ev_g.columns = _grp_src[:-1] + (["Categoria"] if ev_desg=="Categoria" else (["Promo"] if ev_desg=="Promo" else [])) + ["Valor"]
+                else:
+                    _m_col = "Importe" if ev_met == "Ingresos" else "Cantidad"
+                    _ev_g = _src.groupby(_grp_src)[_m_col].sum().reset_index()
+                    rename_d = {_m_col: "Valor"}
+                    if _desg_col_src: rename_d[_desg_col_src] = ev_desg
+                    _ev_g = _ev_g.rename(columns=rename_d)
+                _ev_g = _ev_g.sort_values("Periodo")
+                _x_col = "Periodo"
+
+                _desg_final = ev_desg if ev_desg != "Ninguno" and ev_desg in _ev_g.columns else None
+                if _desg_final:
+                    fig_evo = px.bar(_ev_g, x=_x_col, y="Valor", color=_desg_final,
+                                     color_discrete_sequence=_palette_evo, barmode="stack")
+                    fig_evo.update_traces(marker_line_width=0)
+                else:
+                    fig_evo = go.Figure(go.Bar(
+                        x=_ev_g[_x_col], y=_ev_g["Valor"],
+                        marker_color=C_NAVY, marker_line_width=0, opacity=0.88,
+                        hovertemplate="<b>%{x}</b><br>Valor: %{y:,.0f}<extra></extra>"
+                    ))
+                fig_evo.update_layout(
+                    xaxis=dict(title=ev_gran, tickangle=-35),
+                    yaxis=dict(title=_ylab, tickformat="~s" if ev_met=="Ingresos" else ",.0f",
+                               tickprefix="$" if ev_met=="Ingresos" else "", gridcolor="#F3F4F6"),
+                    legend=dict(orientation="h", y=1.08, font_size=9)
+                )
+                sec(f"Evolucion {ev_gran} — {ev_met}" + (f" · {ev_cat}" if ev_cat != "(Todas)" else ""))
+                st.plotly_chart(pcfg(fig_evo, 360, legend=False), use_container_width=True)
+
+        else:
+            # Mensual o Ciclo — usa df_evo_ciclo (ya tiene Ciclo y Anio_mes via CicloAño_p)
+            _ev = df_evo_ciclo.copy() if not df_evo_ciclo.empty else pd.DataFrame()
+            if _ev.empty:
+                st.info("Sin datos evolutivos disponibles.")
+            else:
+                if ev_cat != "(Todas)": _ev = _ev[_ev["Categoria"] == ev_cat]
+                if ev_prod.strip():     _ev = _ev[_ev["Promo"].str.contains(ev_prod.strip(), case=False, na=False)]
+
+                _x_col = "Ciclo" if ev_gran == "Ciclo" else "Anio_mes"
+                # Si se pide Mensual pero df_evo_ciclo no tiene Anio_mes, usar ddia para mensual
+                if ev_gran == "Mensual" and "Anio_mes" not in _ev.columns and not ddia.empty:
+                    _src2 = ddia.copy()
+                    if ev_cat != "(Todas)" and "Categoria" in _src2.columns:
+                        _src2 = _src2[_src2["Categoria"] == ev_cat]
+                    if ev_prod.strip() and "Nom_promo" in _src2.columns:
+                        _src2 = _src2[_src2["Nom_promo"].str.contains(ev_prod.strip(), case=False, na=False)]
+                    _src2["Periodo"] = _src2["Anio_mes"]
+                    _desg2 = "Categoria" if ev_desg=="Categoria" else ("Nom_promo" if ev_desg=="Promo" else None)
+                    _grp2 = ["Periodo"] + ([_desg2] if _desg2 else [])
+                    _m2 = "Importe" if ev_met=="Ingresos" else "Cantidad"
+                    if ev_met == "N_promos":
+                        _ev_g = _src2.groupby(_grp2)["Nom_promo"].nunique().reset_index()
+                    else:
+                        _ev_g = _src2.groupby(_grp2)[_m2].sum().reset_index()
+                    _ev_g.columns = _grp2 + ["Valor"]
+                    if _desg2 and _desg2 in _ev_g.columns: _ev_g = _ev_g.rename(columns={_desg2: ev_desg})
+                    _ev_g = _ev_g.sort_values("Periodo")
+                    _x_col = "Periodo"
+                else:
+                    _grp_ev = [_x_col] + ([ev_desg] if ev_desg != "Ninguno" else [])
+                    if ev_met == "N_promos":
+                        _ev_g = _ev.groupby(_grp_ev)["Promo"].nunique().reset_index()
+                    else:
+                        _ev_g = _ev.groupby(_grp_ev)[ev_met].sum().reset_index()
+                    _ev_g.columns = list(_ev_g.columns[:-1]) + ["Valor"]
+                    _ev_g = _ev_g.sort_values(_x_col)
+
+                _desg_final = ev_desg if ev_desg != "Ninguno" and ev_desg in _ev_g.columns else None
+                if _desg_final:
+                    fig_evo = px.bar(_ev_g, x=_x_col, y="Valor", color=_desg_final,
+                                     color_discrete_sequence=_palette_evo, barmode="stack")
+                    fig_evo.update_traces(marker_line_width=0)
+                else:
+                    fig_evo = go.Figure(go.Bar(
+                        x=_ev_g[_x_col], y=_ev_g["Valor"],
+                        marker_color=C_NAVY, marker_line_width=0, opacity=0.88,
+                        text=_ev_g["Valor"].apply(
+                            lambda v: clp(v) if ev_met=="Ingresos" else f"{int(v):,}".replace(",",".")),
+                        textposition="outside", textfont_size=9,
+                        hovertemplate="<b>%{x}</b><br>Valor: %{y:,.0f}<extra></extra>"
+                    ))
+                fig_evo.update_layout(
+                    xaxis=dict(title=ev_gran, tickangle=-30),
+                    yaxis=dict(title=_ylab, tickformat="~s" if ev_met=="Ingresos" else ",.0f",
+                               tickprefix="$" if ev_met=="Ingresos" else "", gridcolor="#F3F4F6"),
+                    legend=dict(orientation="h", y=1.08, font_size=9)
+                )
+                sec(f"Evolucion {ev_gran} — {ev_met}" + (f" · {ev_cat}" if ev_cat != "(Todas)" else ""))
+                st.plotly_chart(pcfg(fig_evo, 340, legend=False), use_container_width=True)
+
+                # Línea por promo individual si hay búsqueda
+                if ev_prod.strip() and not _ev.empty:
+                    _ev_line = _ev.groupby([_x_col,"Promo"])[
+                        ev_met if ev_met != "N_promos" else "Ingresos"].sum().reset_index()
+                    _ev_line = _ev_line.sort_values(_x_col)
+                    if not _ev_line.empty:
+                        fig_line = px.line(
+                            _ev_line, x=_x_col,
+                            y=ev_met if ev_met != "N_promos" else "Ingresos",
+                            color="Promo", markers=True,
+                            color_discrete_sequence=[C_RED, C_NAVY, C_AMBER, C_GREEN, C_BLUE2]
+                        )
+                        fig_line.update_traces(line_width=2.5, marker_size=7)
+                        fig_line.update_layout(
+                            xaxis=dict(title=ev_gran, tickangle=-30),
+                            yaxis=dict(title=_ylab, gridcolor="#F3F4F6",
+                                       tickprefix="$" if ev_met=="Ingresos" else ""),
+                            legend=dict(orientation="h", y=1.08, font_size=9)
+                        )
+                        sec(f"Evolucion de '{ev_prod.strip()}' — {ev_gran}")
+                        st.plotly_chart(pcfg(fig_line, 300, legend=False), use_container_width=True)
+
+    # ══════════════════════════════════════════════════════════════════════
+    #  SECCION E — TICKET PROMEDIO
+    # ══════════════════════════════════════════════════════════════════════
+    st.divider()
+    st.markdown("#### Ticket Promedio — Con Promo vs Sin Promo")
+    st.caption("Diferencia en valor de boleta entre clientes que compran en promo y los que no.")
 
     if not df_tkt_mes.empty:
         _tm = df_tkt_mes.dropna(subset=["Tkt_con_promo","Tkt_sin_promo"]).copy()
-
-        # KPIs agregados
-        _tkt_cp  = (_tm["Ing_promo"].sum()     / _tm["Tkts_promo"].sum()     ) if _tm["Tkts_promo"].sum()     > 0 else 0
-        _tkt_sp  = (_tm["Ing_sin_promo"].sum()  / _tm["Tkts_sin_promo"].sum()) if _tm["Tkts_sin_promo"].sum() > 0 else 0
-        _tkt_tot = (_tm["Ing_total"].sum()       / _tm["Tkts_total"].sum()    ) if _tm["Tkts_total"].sum()     > 0 else 0
+        _tkt_cp  = (_tm["Ing_promo"].sum()    / _tm["Tkts_promo"].sum()    ) if _tm["Tkts_promo"].sum()    > 0 else 0
+        _tkt_sp  = (_tm["Ing_sin_promo"].sum() / _tm["Tkts_sin_promo"].sum()) if _tm["Tkts_sin_promo"].sum()> 0 else 0
+        _tkt_tot = (_tm["Ing_total"].sum()     / _tm["Tkts_total"].sum()   ) if _tm["Tkts_total"].sum()    > 0 else 0
         _uplift  = (_tkt_cp - _tkt_sp) / _tkt_sp if _tkt_sp > 0 else 0
 
         kt = st.columns(4)
         kpi(kt[0], clp(_tkt_tot), "Ticket Promedio Global")
-        kpi(kt[1], clp(_tkt_cp),  "Ticket CON Promo",    "g" if _tkt_cp > _tkt_tot else "a")
-        kpi(kt[2], clp(_tkt_sp),  "Ticket SIN Promo",    "a")
+        kpi(kt[1], clp(_tkt_cp),  "Ticket Con Promo",  "g" if _tkt_cp > _tkt_tot else "a")
+        kpi(kt[2], clp(_tkt_sp),  "Ticket Sin Promo",  "a")
         kpi(kt[3], f"{_uplift*100:+.1f}%", "Uplift de Ticket", "g" if _uplift > 0 else "r")
 
-        c1_a, c2_a = st.columns(2)
-        with c1_a:
+        c1_tkt, c2_tkt = st.columns(2)
+        with c1_tkt:
             fig_tkt = go.Figure()
             fig_tkt.add_trace(go.Scatter(
                 name="Sin Promo", x=_tm["Anio_mes"], y=_tm["Tkt_sin_promo"],
-                mode="lines+markers", line=dict(color=C_NAVY, width=2.5),
-                marker=dict(size=6),
-                hovertemplate="<b>%{x}</b><br>Ticket sin promo: $%{y:,.0f}<extra></extra>"
+                mode="lines+markers", line=dict(color=C_NAVY, width=2.5), marker=dict(size=6),
+                hovertemplate="<b>%{x}</b><br>Sin promo: $%{y:,.0f}<extra></extra>"
             ))
             fig_tkt.add_trace(go.Scatter(
                 name="Con Promo", x=_tm["Anio_mes"], y=_tm["Tkt_con_promo"],
-                mode="lines+markers", line=dict(color=C_RED, width=2.5),
-                marker=dict(size=6),
+                mode="lines+markers", line=dict(color=C_RED, width=2.5), marker=dict(size=6),
                 fill="tonexty", fillcolor="rgba(200,16,46,0.07)",
-                hovertemplate="<b>%{x}</b><br>Ticket con promo: $%{y:,.0f}<extra></extra>"
-            ))
-            fig_tkt.add_trace(go.Scatter(
-                name="Promedio total", x=_tm["Anio_mes"], y=_tm["Tkt_promedio"],
-                mode="lines", line=dict(color=C_AMBER, width=1.5, dash="dot"),
-                hovertemplate="<b>%{x}</b><br>Ticket promedio: $%{y:,.0f}<extra></extra>"
+                hovertemplate="<b>%{x}</b><br>Con promo: $%{y:,.0f}<extra></extra>"
             ))
             fig_tkt.update_yaxes(tickprefix="$", tickformat=",.0f", title="Valor de boleta ($)")
-            fig_tkt.update_xaxes(title="Mes")
             fig_tkt.update_layout(legend=dict(orientation="h", y=1.1, x=0, font_size=10))
-            sec("Evolución del Ticket Promedio — con promo (rojo) vs sin promo (azul)")
-            st.plotly_chart(pcfg(fig_tkt, 310, legend=False), use_container_width=True)
+            sec("Evolución del Ticket — con promo vs sin promo")
+            st.plotly_chart(pcfg(fig_tkt, 300, legend=False), use_container_width=True)
 
-        with c2_a:
-            # Volumen de tickets con vs sin promo
-            fig_tktvol = go.Figure()
-            fig_tktvol.add_trace(go.Bar(
-                name="Tkts sin promo", x=_tm["Anio_mes"], y=_tm["Tkts_sin_promo"],
-                marker_color=C_NAVY, opacity=0.8, marker_line_width=0,
-                hovertemplate="<b>%{x}</b><br>Boletas sin promo: %{y:,.0f}<extra></extra>"
-            ))
-            fig_tktvol.add_trace(go.Bar(
-                name="Tkts con promo", x=_tm["Anio_mes"], y=_tm["Tkts_promo"],
-                marker_color=C_RED, opacity=0.8, marker_line_width=0,
-                hovertemplate="<b>%{x}</b><br>Boletas con promo: %{y:,.0f}<extra></extra>"
-            ))
-            fig_tktvol.update_layout(
-                barmode="stack",
-                yaxis=dict(title="N° boletas", tickformat=",.0f", gridcolor="#F3F4F6"),
-                legend=dict(orientation="h", y=1.1, x=0, font_size=10)
-            )
-            sec("Volumen de Boletas — con promo (rojo) vs sin promo (azul)")
-            st.plotly_chart(pcfg(fig_tktvol, 310, legend=False), use_container_width=True)
+        with c2_tkt:
+            _tm["Uplift"] = (_tm["Tkt_con_promo"] - _tm["Tkt_sin_promo"]) / _tm["Tkt_sin_promo"].replace(0, np.nan)
+            _tm_u = _tm.dropna(subset=["Uplift"])
+            if not _tm_u.empty:
+                _tm_u["lbl"]   = _tm_u["Uplift"].apply(lambda x: f"{x*100:+.1f}%")
+                _tm_u["Color"] = _tm_u["Uplift"].apply(lambda x: C_GREEN if x >= 0 else C_RED)
+                fig_upl = go.Figure(go.Bar(
+                    x=_tm_u["Anio_mes"], y=_tm_u["Uplift"],
+                    marker_color=_tm_u["Color"].tolist(),
+                    text=_tm_u["lbl"], textposition="outside", textfont_size=9,
+                    marker_line_width=0,
+                    hovertemplate="<b>%{x}</b><br>Uplift: %{y:+.1%}<extra></extra>"
+                ))
+                fig_upl.add_hline(y=0, line_color="#374151", line_width=1.5)
+                fig_upl.update_yaxes(tickformat="+.0%", title="Uplift %")
+                sec("Uplift de Ticket por Mes")
+                st.plotly_chart(pcfg(fig_upl, 300, legend=False), use_container_width=True)
 
-        # Uplift mensual
-        _tm["Uplift"] = (_tm["Tkt_con_promo"] - _tm["Tkt_sin_promo"]) / _tm["Tkt_sin_promo"].replace(0, np.nan)
-        _tm_u = _tm.dropna(subset=["Uplift"])
-        if not _tm_u.empty:
-            _tm_u["lbl"] = _tm_u["Uplift"].apply(lambda x: f"{x*100:+.1f}%")
-            _tm_u["Color"] = _tm_u["Uplift"].apply(lambda x: C_GREEN if x >= 0 else C_RED)
-            fig_upl = go.Figure(go.Bar(
-                x=_tm_u["Anio_mes"], y=_tm_u["Uplift"],
-                marker_color=_tm_u["Color"].tolist(),
-                text=_tm_u["lbl"], textposition="outside", textfont_size=9,
-                marker_line_width=0,
-                hovertemplate="<b>%{x}</b><br>Uplift ticket: %{y:+.1%}<extra></extra>"
-            ))
-            fig_upl.add_hline(y=0, line_color="#374151", line_width=1.5)
-            fig_upl.update_yaxes(tickformat="+.0%", title="Uplift %")
-            sec("Uplift de Ticket — cuánto más (o menos) vale una boleta con promo vs sin promo")
-            st.plotly_chart(pcfg(fig_upl, 240, legend=False), use_container_width=True)
-
-    # ══════════════════════════════════════════════════════════
-    #  SECCIÓN B — SKUs / CATEGORÍA POR PROMO (#3)
-    # ══════════════════════════════════════════════════════════
+    # ══════════════════════════════════════════════════════════════════════
+    #  SECCION F — CATALOGO: TRANSACCIONES REALES Y SIN VENTA
+    # ══════════════════════════════════════════════════════════════════════
     st.divider()
-    st.markdown("#### 🏷️ Sección B — Ranking de Promos por Categoría y Desempeño")
-    st.caption("Qué promos tuvieron salida real, en qué categorías, y cómo se comparan entre sí.")
+    st.markdown("#### Catalogo de Promos — Transacciones Reales y Cobertura")
+    st.caption("Normaliza unidades brutas a transacciones reales y detecta promos planificadas sin venta.")
 
-    if not df_sku_promo.empty:
-        # Filtros en línea
-        cb1, cb2, cb3, cb4 = st.columns([2,2,1,2])
-        with cb1:
-            cat_b = st.selectbox("Categoría", ["(Todas)"] +
-                                  sorted(df_sku_promo["Categoria"].unique().tolist()), key="cat_b")
-        with cb2:
-            orden_b = st.selectbox("Ordenar por", ["Ingresos","Unidades","ROI","Mg_pct","Desc_pct"], key="ord_b")
-        with cb3:
-            top_b = st.slider("Top N", 5, 50, 20, key="top_b")
-        with cb4:
-            prod_b = st.text_input("🔍 Producto en promo", placeholder="ej: Monster 473, Red Bull…", key="prod_b")
+    if df_catalogo.empty:
+        st.info("Catalogo no cargado. Sube el CSV desde el sidebar.")
+    elif df_sku_promo.empty:
+        st.info("Sin datos de ventas promocionales.")
+    else:
+        _cat2 = df_catalogo.copy()
+        _ven2 = df_sku_promo[["Promo","Cod_promo","Categoria","Ingresos","Unidades","Mg_pct","Tiendas","Primer_mes","Ultimo_mes"]].copy()
+        _ven2["Cod_promo_up"] = _ven2["Cod_promo"].str.strip().str.upper()
+        _cat2["Cod_promo_up"] = _cat2["Cod_promo"].str.strip().str.upper()
+        _join2 = _ven2.merge(_cat2[["Cod_promo_up","Formato_promo","Unidades_por_promo"]], on="Cod_promo_up", how="left")
+        _join2["Unidades_por_promo"]   = _join2["Unidades_por_promo"].fillna(1).astype(int)
+        _join2["Transacciones_promo"]  = (_join2["Unidades"] / _join2["Unidades_por_promo"]).round(0).astype(int)
+        _join2["Formato_promo"]        = _join2["Formato_promo"].fillna("Sin catalogo")
 
-        _sp = df_sku_promo.copy()
-        if cat_b != "(Todas)": _sp = _sp[_sp["Categoria"] == cat_b]
-        if prod_b.strip():
-            _sp = _sp[_sp["Promo"].str.contains(prod_b.strip(), case=False, na=False)]
-        _sp = _sp.nlargest(top_b, orden_b).copy()
+        _cod_con_venta2 = set(_ven2["Cod_promo_up"].dropna().unique())
+        _sin_venta2     = _cat2[~_cat2["Cod_promo_up"].isin(_cod_con_venta2)].copy()
 
-        if not _sp.empty:
-            _sp["Semaforo"] = _sp.apply(lambda r:
-                "🟢" if s(r["Mg_pct"]) >= 0.20 and s(r["ROI"]) >= 2
-                else ("🟡" if s(r["Mg_pct"]) >= 0.10 or s(r["ROI"]) >= 1 else "🔴"), axis=1)
+        _n_cat2   = len(_cat2)
+        _n_venta2 = _join2["Cod_promo_up"].nunique()
+        _n_sin2   = len(_sin_venta2)
+        _cobert2  = _n_venta2 / _n_cat2 if _n_cat2 > 0 else 0
+        _tot_tr2  = _join2["Transacciones_promo"].sum()
 
-            # ── Preparar datos comunes de torta ──
-            _pie_df = _sp.sort_values("Ingresos", ascending=False).copy()
-            _pie_names = _pie_df["Promo"].tolist()
-            _pie_ing   = _pie_df["Ingresos"].tolist()
-            _pie_uni   = _pie_df["Unidades"].tolist()
+        ke2 = st.columns(5)
+        kpi(ke2[0], f"{_n_cat2:,}",  "Promos en catalogo")
+        kpi(ke2[1], f"{_n_venta2:,}", "Promos con venta", "g")
+        kpi(ke2[2], f"{_n_sin2:,}",   "Promos sin venta", "r" if _n_sin2 > 0 else "g")
+        kpi(ke2[3], f"{_cobert2*100:.1f}%", "Cobertura", "g" if _cobert2>=0.7 else "a")
+        kpi(ke2[4], f"{_tot_tr2:,.0f}".replace(",","."), "Transacciones reales")
 
-            # "Sin Promo" solo cuando hay búsqueda de producto
-            _ing_sin = 0
-            _uni_sin = 0
-            if prod_b.strip() and not df_pen_prod.empty:
-                _match = df_pen_prod[df_pen_prod["Producto"].str.contains(
-                    prod_b.strip(), case=False, na=False)]
-                if not _match.empty:
-                    _ing_sin = _match["Ing_sin_promo"].sum()
-                    _uni_sin = _match["Cant_sin_promo"].sum() if "Cant_sin_promo" in _match.columns else 0
-
-            _names_ing = _pie_names.copy()
-            _vals_ing  = _pie_ing.copy()
-            _names_uni = _pie_names.copy()
-            _vals_uni  = _pie_uni.copy()
-
-            if prod_b.strip():
-                if _ing_sin > 0:
-                    _names_ing.append(f"{prod_b.strip()} (sin promo)")
-                    _vals_ing.append(_ing_sin)
-                if _uni_sin > 0:
-                    _names_uni.append(f"{prod_b.strip()} (sin promo)")
-                    _vals_uni.append(_uni_sin)
-
-            _n_pie = len(_pie_df)
-            _colors_ing = [C_RED]*_n_pie + ([C_NAVY] if (prod_b.strip() and _ing_sin > 0) else [])
-            _colors_uni = [C_RED]*_n_pie + ([C_NAVY] if (prod_b.strip() and _uni_sin > 0) else [])
-
-            c1_b, c2_b = st.columns(2)
-
-            with c1_b:
-                fig_pie_ing = go.Figure(go.Pie(
-                    labels=_names_ing, values=_vals_ing,
-                    hole=0.42,
-                    marker=dict(colors=_colors_ing, line=dict(color="white", width=1.5)),
-                    texttemplate="%{label}<br><b>%{percent:.1%}</b>",
-                    textfont_size=9,
-                    hovertemplate="<b>%{label}</b><br>Ingresos: $%{value:,.0f}<br>%{percent:.1%}<extra></extra>",
-                    sort=False
-                ))
-                _tot_ing = sum(_vals_ing)
-                _lbl_ing = (f"<b>${_tot_ing/1e9:.2f}B</b>" if _tot_ing >= 1e9
-                            else f"<b>${_tot_ing/1e6:.1f}M</b>" if _tot_ing >= 1e6
-                            else f"<b>${_tot_ing/1e3:.0f}K</b>")
-                fig_pie_ing.update_layout(
-                    showlegend=False,
-                    annotations=[dict(
-                        text=f"{_lbl_ing}<br><span style='font-size:10px'>Total ingresos</span>",
-                        x=0.5, y=0.5, font_size=14, showarrow=False,
-                        font=dict(color=C_NAVY))]
-                )
-                _title_ing = (f"'{prod_b.strip()}' — Mix por Ingresos"
-                              if prod_b.strip() else f"Top {top_b} Promos — Mix por Ingresos")
-                sec(_title_ing)
-                st.plotly_chart(pcfg(fig_pie_ing, 380, legend=False), use_container_width=True)
-
-            with c2_b:
-                fig_pie_uni = go.Figure(go.Pie(
-                    labels=_names_uni, values=_vals_uni,
-                    hole=0.42,
-                    marker=dict(colors=_colors_uni, line=dict(color="white", width=1.5)),
-                    texttemplate="%{label}<br><b>%{percent:.1%}</b>",
-                    textfont_size=9,
-                    hovertemplate="<b>%{label}</b><br>Unidades: %{value:,.0f}<br>%{percent:.1%}<extra></extra>",
-                    sort=False
-                ))
-                _tot_uni = sum(_vals_uni)
-                _lbl_uni = (f"<b>{_tot_uni/1e6:.1f}M</b>" if _tot_uni >= 1e6
-                            else f"<b>{_tot_uni/1e3:.0f}K</b>" if _tot_uni >= 1e3
-                            else f"<b>{int(_tot_uni):,}</b>")
-                fig_pie_uni.update_layout(
-                    showlegend=False,
-                    annotations=[dict(
-                        text=f"{_lbl_uni}<br><span style='font-size:10px'>Total unidades</span>",
-                        x=0.5, y=0.5, font_size=14, showarrow=False,
-                        font=dict(color=C_NAVY))]
-                )
-                _title_uni = (f"'{prod_b.strip()}' — Mix por Cantidad"
-                              if prod_b.strip() else f"Top {top_b} Promos — Mix por Cantidad")
-                sec(_title_uni)
-                st.plotly_chart(pcfg(fig_pie_uni, 380, legend=False), use_container_width=True)
-
-            # Tabla detalle
-            sec("Detalle completo — Promos con salida real")
-            _sp_t = _sp.copy()
-            _sp_t["Ingresos"]  = _sp_t["Ingresos"].apply(clp)
-            _sp_t["Unidades"]  = _sp_t["Unidades"].apply(lambda x: f"{int(x):,}".replace(",","."))
-            _sp_t["Margen %"]  = _sp_t["Mg_pct"].apply(lambda x: f"{x*100:.1f}%")
-            _sp_t["Desc %"]    = _sp_t["Desc_pct"].apply(lambda x: f"{x*100:.1f}%")
-            _sp_t["ROI"]       = _sp_t["ROI"].apply(lambda x: f"{x:.2f}×" if pd.notna(x) else "–")
-            _sp_t["Tiendas"]   = _sp_t["Tiendas"].apply(lambda x: f"{int(x)}")
-            _sp_t["Período"]   = _sp_t["Primer_mes"] + " → " + _sp_t["Ultimo_mes"]
+        c1_cat, c2_cat = st.columns(2)
+        with c1_cat:
+            _norm_t2 = _join2[["Promo","Categoria","Formato_promo","Unidades_por_promo",
+                                "Unidades","Transacciones_promo","Ingresos","Mg_pct"]].copy()
+            _norm_t2 = _norm_t2.sort_values("Transacciones_promo", ascending=False)
+            _norm_t2["Ingresos"]             = _norm_t2["Ingresos"].apply(clp)
+            _norm_t2["Margen"]               = _norm_t2["Mg_pct"].apply(lambda x: f"{x*100:.1f}%")
+            _norm_t2["Unidades brutas"]      = _norm_t2["Unidades"].apply(lambda x: f"{int(x):,}".replace(",","."))
+            _norm_t2["Transacciones reales"] = _norm_t2["Transacciones_promo"].apply(lambda x: f"{int(x):,}".replace(",","."))
+            _norm_t2["Pack"]                 = _norm_t2["Unidades_por_promo"].astype(str) + "x"
+            sec("Unidades Brutas vs Transacciones Reales")
             st.dataframe(
-                _sp_t[["Semaforo","Promo","Categoria","Ingresos","Unidades",
-                        "Margen %","ROI","Desc %","Tiendas","Período"]],
+                _norm_t2[["Promo","Categoria","Formato_promo","Pack","Unidades brutas","Transacciones reales","Ingresos","Margen"]],
                 use_container_width=True, hide_index=True, height=340
             )
 
-    # ══════════════════════════════════════════════════════════
-    #  SECCIÓN C — DISTRIBUCIÓN POR CATEGORÍA × MES × PROMO
-    # ══════════════════════════════════════════════════════════
-    st.divider()
-    st.markdown("#### 📅 Sección C — Distribución Promo por Categoría y Período")
-    st.caption("Qué categorías concentran más actividad promocional en cada mes/ciclo.")
-
-    if not df_promo_ciclo.empty:
-        c1_c, c2_c = st.columns(2)
-        with c1_c:
-            # Heatmap: Ingresos promo por categoría × mes
-            piv_pc = df_promo_ciclo.groupby(["Categoria","Anio_mes"])["Ingresos"].sum().reset_index()
-            piv_pc = piv_pc.pivot(index="Categoria", columns="Anio_mes", values="Ingresos").fillna(0)
-            piv_pc = piv_pc.loc[piv_pc.sum(axis=1).sort_values(ascending=False).index]
-
-            def _fmt_heat(v):
-                if v == 0: return ""
-                if v >= 1e9: return f"${v/1e9:.1f}B"
-                if v >= 1e6: return f"${v/1e6:.0f}M"
-                return f"${v/1e3:.0f}K"
-
-            lbl_pc = piv_pc.map(_fmt_heat).values
-            fig_hpc = px.imshow(
-                piv_pc, color_continuous_scale=["#EEF2F7","#93C5FD","#003B7A"],
-                aspect="auto", zmin=0, text_auto=False
-            )
-            fig_hpc.update_traces(
-                text=lbl_pc, texttemplate="%{text}",
-                textfont=dict(size=9, color="white"),
-                hovertemplate="<b>%{y}</b><br>%{x}<br>Ingresos promo: $%{z:,.0f}<extra></extra>"
-            )
-            fig_hpc.update_layout(
-                coloraxis_colorbar=dict(title="Ingresos $", tickformat="$~s", len=0.6),
-                xaxis_title="", yaxis_title=""
-            )
-            sec("Heatmap — Ingresos Promo por Categoría × Mes")
-            st.plotly_chart(pcfg(fig_hpc, max(300, len(piv_pc)*34), legend=False),
-                            use_container_width=True)
-
-        with c2_c:
-            # Barras apiladas: ingresos promo por categoría por mes
-            _pc_bar = df_promo_ciclo.groupby(["Anio_mes","Categoria"])["Ingresos"].sum().reset_index()
-            _pc_bar = _pc_bar.sort_values("Anio_mes")
-            fig_pbar = px.bar(
-                _pc_bar, x="Anio_mes", y="Ingresos",
-                color="Categoria", color_discrete_sequence=CAT_COLORS,
-                text_auto=False
-            )
-            fig_pbar.update_traces(marker_line_width=0)
-            fig_pbar.update_layout(
-                barmode="stack",
-                xaxis_tickangle=-30,
-                yaxis=dict(title="Ingresos promo ($)", tickprefix="$", tickformat="~s",
-                           gridcolor="#F3F4F6"),
-                legend=dict(orientation="v", x=1.01, font_size=9)
-            )
-            sec("Ingresos Promo Apilado por Categoría × Mes")
-            st.plotly_chart(pcfg(fig_pbar, 340), use_container_width=True)
-
-        # N° promos activas por mes
-        _n_promos_mes = df_promo_ciclo.groupby("Anio_mes")["Promo"].nunique().reset_index()
-        _n_promos_mes.columns = ["Anio_mes","N_promos"]
-        _n_promos_mes["CicloAño"] = _n_promos_mes["Anio_mes"].map(MES_CICLO).fillna("")
-
-        fig_np = go.Figure()
-        fig_np.add_trace(go.Bar(
-            x=_n_promos_mes["Anio_mes"], y=_n_promos_mes["N_promos"],
-            marker_color=C_NAVY, opacity=0.85, marker_line_width=0,
-            text=_n_promos_mes["N_promos"],
-            textposition="outside", textfont_size=10,
-            hovertemplate="<b>%{x}</b><br>Promos activas: %{y}<extra></extra>"
-        ))
-        fig_np.update_yaxes(title="N° promociones con venta real", gridcolor="#F3F4F6")
-        sec("Promos Activas por Mes — cantidad de promos que generaron venta real")
-        st.plotly_chart(pcfg(fig_np, 240, legend=False), use_container_width=True)
-
-    # ══════════════════════════════════════════════════════════
-    #  SECCIÓN D — CONTRIBUCIÓN AL MARGEN TOTAL
-    # ══════════════════════════════════════════════════════════
-    st.divider()
-    st.markdown("#### 💼 Sección D — Contribución Promo al Margen Total del Negocio")
-    st.caption("Cuánto del margen total del negocio proviene de ventas bajo promoción.")
-
-    if not df_tkt_mes.empty and not df_sku_promo.empty:
-        mg_promo_total = df_sku_promo["Ingresos"].sum() * df_sku_promo["Mg_pct"].mean() \
-            if not df_sku_promo.empty else 0
-        # Usar los datos de ventas ya calculados
-        ing_promo_tot = df_tkt_mes["Ing_promo"].sum()
-        ing_sin_tot   = df_tkt_mes["Ing_sin_promo"].sum()
-        ing_total_d   = df_tkt_mes["Ing_total"].sum()
-
-        c1_d, c2_d = st.columns(2)
-        with c1_d:
-            # Donut: mix ingresos promo vs sin promo
-            _donut = pd.DataFrame({
-                "Tipo":     ["Con Promo", "Sin Promo"],
-                "Ingresos": [ing_promo_tot, ing_sin_tot]
-            })
-            fig_donut = px.pie(
-                _donut, values="Ingresos", names="Tipo",
-                color="Tipo",
-                color_discrete_map={"Con Promo": C_RED, "Sin Promo": C_NAVY},
-                hole=0.55
-            )
-            fig_donut.update_traces(
-                texttemplate="%{label}<br><b>%{percent:.1%}</b>",
-                textfont_size=12,
-                hovertemplate="<b>%{label}</b><br>Ingresos: $%{value:,.0f} (%{percent:.1%})<extra></extra>"
-            )
-            fig_donut.update_layout(showlegend=False,
-                                    annotations=[dict(text=f"<b>{clp(ing_total_d)}</b><br>Total",
-                                                      x=0.5, y=0.5, font_size=13, showarrow=False)])
-            sec("Split de Ingresos — Promo vs Base")
-            st.plotly_chart(pcfg(fig_donut, 300, legend=False), use_container_width=True)
-
-        with c2_d:
-            # Contribución por categoría: margen promo vs total
-            _contrib = df_sku_promo.groupby("Categoria").agg(
-                Ing_promo=("Ingresos","sum"),
-                Mg_pct_prom=("Mg_pct","mean")
-            ).reset_index()
-            _contrib["Margen_promo_est"] = _contrib["Ing_promo"] * _contrib["Mg_pct_prom"]
-            _contrib["Contribucion"] = _contrib["Margen_promo_est"] / _contrib["Margen_promo_est"].sum()
-            _contrib = _contrib.sort_values("Contribucion", ascending=False).head(12)
-            _contrib["lbl"] = _contrib["Contribucion"].apply(lambda x: f"{x*100:.1f}%")
-
-            fig_contrib = px.bar(
-                _contrib, x="Contribucion", y="Categoria", orientation="h",
-                color="Mg_pct_prom",
-                color_continuous_scale=["#C8102E","#F5A623","#1A9E5C"],
-                text="lbl",
-                custom_data=["Ing_promo","Margen_promo_est"]
-            )
-            fig_contrib.update_traces(
-                textposition="outside", textfont_size=10, marker_line_width=0,
-                hovertemplate=(
-                    "<b>%{y}</b><br>Contribución al margen promo: %{x:.1%}<br>"
-                    "Ingresos promo: $%{customdata[0]:,.0f}<br>"
-                    "Margen promo est.: $%{customdata[1]:,.0f}<extra></extra>"
-                )
-            )
-            fig_contrib.update_layout(
-                yaxis=dict(autorange="reversed"),
-                xaxis=dict(tickformat=".0%"),
-                coloraxis_colorbar=dict(title="Mg %", tickformat=".0%")
-            )
-            sec("Contribución al Margen Promo por Categoría")
-            st.plotly_chart(pcfg(fig_contrib, 340, legend=False), use_container_width=True)
-
-    # ══════════════════════════════════════════════════════════
-    #  SECCIÓN E — CATÁLOGO DE PROMOS: TRANSACCIONES REALES Y SIN VENTA
-    # ══════════════════════════════════════════════════════════
-    st.divider()
-    st.markdown("#### 📋 Sección E — Catálogo de Promos: Transacciones Reales y Cobertura")
-    st.caption(
-        "Usando el catálogo oficial de promos, normaliza unidades brutas → transacciones reales "
-        "(ej: 1000 unidades de una promo 2x = 500 transacciones). "
-        "También detecta promos planificadas que nunca tuvieron venta."
-    )
-
-    if df_catalogo.empty:
-        st.info(
-            "Catálogo de promos no cargado. Sube el archivo CSV con las columnas "
-            "**Cod_promo, Nom_promo, Formato_promo, Unidades_por_promo** desde el sidebar."
-        )
-    elif df_sku_promo.empty:
-        st.info("Sin datos de ventas promocionales para cruzar con el catálogo.")
-    else:
-        # ── Join: ventas reales con catálogo ──
-        _cat = df_catalogo.copy()
-        _ven = df_sku_promo[["Promo","Cod_promo","Categoria","Ingresos","Unidades",
-                               "Mg_pct","Tiendas","Primer_mes","Ultimo_mes"]].copy()
-        _ven["Cod_promo_up"] = _ven["Cod_promo"].str.strip().str.upper()
-        _cat["Cod_promo_up"] = _cat["Cod_promo"].str.strip().str.upper()
-
-        _join = _ven.merge(_cat[["Cod_promo_up","Formato_promo","Unidades_por_promo"]],
-                           on="Cod_promo_up", how="left")
-        _join["Unidades_por_promo"] = _join["Unidades_por_promo"].fillna(1).astype(int)
-        _join["Transacciones_promo"] = (_join["Unidades"] / _join["Unidades_por_promo"]).round(0).astype(int)
-        _join["Formato_promo"] = _join["Formato_promo"].fillna("Sin catálogo")
-
-        # ── Promos sin venta (en catálogo pero no en ventas) ──
-        _cod_con_venta = set(_ven["Cod_promo_up"].dropna().unique())
-        _sin_venta = _cat[~_cat["Cod_promo_up"].isin(_cod_con_venta)].copy()
-
-        # KPIs
-        _n_cat   = len(_cat)
-        _n_venta = _join["Cod_promo_up"].nunique()
-        _n_sin   = len(_sin_venta)
-        _cobert  = _n_venta / _n_cat if _n_cat > 0 else 0
-        _tot_tran = _join["Transacciones_promo"].sum()
-        _tot_uni  = _join["Unidades"].sum()
-        _factor   = _tot_tran / _tot_uni if _tot_uni > 0 else 1
-
-        ke = st.columns(5)
-        kpi(ke[0], f"{_n_cat:,}", "Promos en catálogo")
-        kpi(ke[1], f"{_n_venta:,}", "Promos con venta real", "g")
-        kpi(ke[2], f"{_n_sin:,}", "Promos sin ninguna venta", "r" if _n_sin > 0 else "g")
-        kpi(ke[3], f"{_cobert*100:.1f}%", "Cobertura del catálogo", "g" if _cobert >= 0.7 else "a")
-        kpi(ke[4], f"{_tot_tran:,.0f}", "Transacciones promo reales")
-
-        c1_e, c2_e = st.columns(2)
-
-        with c1_e:
-            # Tabla: promos con venta + transacciones reales normalizadas
-            sec("Promos con Venta — Unidades Brutas vs Transacciones Reales")
-            _norm_t = _join[["Promo","Categoria","Formato_promo","Unidades_por_promo",
-                              "Unidades","Transacciones_promo","Ingresos","Mg_pct","Tiendas"]].copy()
-            _norm_t = _norm_t.sort_values("Transacciones_promo", ascending=False)
-            _norm_t["Ingresos"]            = _norm_t["Ingresos"].apply(clp)
-            _norm_t["Margen %"]            = _norm_t["Mg_pct"].apply(lambda x: f"{x*100:.1f}%")
-            _norm_t["Unidades brutas"]     = _norm_t["Unidades"].apply(lambda x: f"{int(x):,}".replace(",","."))
-            _norm_t["Transacciones reales"]= _norm_t["Transacciones_promo"].apply(lambda x: f"{int(x):,}".replace(",","."))
-            _norm_t["Unid/promo"]          = _norm_t["Unidades_por_promo"].astype(str) + "x"
-            st.dataframe(
-                _norm_t[["Promo","Categoria","Formato_promo","Unid/promo",
-                          "Unidades brutas","Transacciones reales","Ingresos","Margen %","Tiendas"]],
-                use_container_width=True, hide_index=True, height=360,
-                column_config={
-                    "Promo": st.column_config.TextColumn("Promoción", width=220),
-                    "Formato_promo": st.column_config.TextColumn("Formato"),
-                    "Unid/promo": st.column_config.TextColumn("Pack"),
-                }
-            )
-
-        with c2_e:
-            # Bar chart: top promos por transacciones reales
-            _top_e = _join.nlargest(20, "Transacciones_promo").sort_values("Transacciones_promo")
-            _top_e["lbl"] = _top_e.apply(
+        with c2_cat:
+            _top2 = _join2.nlargest(20, "Transacciones_promo").sort_values("Transacciones_promo")
+            _top2["lbl"] = _top2.apply(
                 lambda r: f"{int(r['Transacciones_promo']):,} ({r['Unidades_por_promo']}x)".replace(",","."), axis=1)
-            fig_e1 = go.Figure(go.Bar(
-                x=_top_e["Transacciones_promo"],
-                y=_top_e["Promo"],
-                orientation="h",
+            fig_cat2 = go.Figure(go.Bar(
+                x=_top2["Transacciones_promo"], y=_top2["Promo"], orientation="h",
                 marker_color=C_RED, marker_line_width=0, opacity=0.88,
-                text=_top_e["lbl"],
-                textposition="inside", textfont=dict(size=9, color="white"),
-                hovertemplate="<b>%{y}</b><br>Transacciones reales: %{x:,.0f}<extra></extra>"
+                text=_top2["lbl"], textposition="inside", textfont=dict(size=9, color="white"),
+                hovertemplate="<b>%{y}</b><br>Transacciones: %{x:,.0f}<extra></extra>"
             ))
-            fig_e1.update_layout(
-                yaxis=dict(autorange="reversed"),
-                xaxis=dict(title="Transacciones promo reales", tickformat=",.0f")
-            )
-            sec("Top 20 Promos — Transacciones Reales (unidades ÷ pack)")
-            st.plotly_chart(pcfg(fig_e1, max(340, len(_top_e)*28), legend=False),
-                            use_container_width=True)
+            fig_cat2.update_layout(yaxis=dict(autorange="reversed"), xaxis=dict(title="Transacciones reales"))
+            sec("Top 20 Promos por Transacciones Reales")
+            st.plotly_chart(pcfg(fig_cat2, max(340, len(_top2)*28), legend=False), use_container_width=True)
 
-        # ── Promos sin venta ──
-        if not _sin_venta.empty:
+        if not _sin_venta2.empty:
             st.divider()
-            sec(f"⚠️ {len(_sin_venta)} Promos del catálogo SIN ninguna venta registrada")
-            _sv_t = _sin_venta[["Cod_promo","Nom_promo","Formato_promo","Unidades_por_promo"]].copy()
-            _sv_t.columns = ["Código promo","Nombre","Formato","Pack"]
-            _sv_t["Ciclo"] = _sv_t["Código promo"].apply(
-                lambda c: "-".join(str(c).split("-")[:2]) if c else "")
-            _sv_t = _sv_t.sort_values("Ciclo")
-            st.dataframe(_sv_t, use_container_width=True, hide_index=True, height=300)
+            sec(f"{len(_sin_venta2)} Promos del catalogo SIN venta registrada")
+            _sv_t2 = _sin_venta2[["Cod_promo","Nom_promo","Formato_promo","Unidades_por_promo"]].copy()
+            _sv_t2.columns = ["Código","Nombre","Formato","Pack"]
+            _sv_t2["Ciclo"] = _sv_t2["Código"].apply(lambda c: "-".join(str(c).split("-")[:2]) if c else "")
+            st.dataframe(_sv_t2.sort_values("Ciclo"), use_container_width=True, hide_index=True, height=280)
 
-            # Distribución por ciclo de las promos sin venta
-            _sv_ciclo = _sv_t.groupby("Ciclo").size().reset_index(name="N_sin_venta")
-            _sv_ciclo = _sv_ciclo.sort_values("Ciclo")
-            fig_sv = go.Figure(go.Bar(
-                x=_sv_ciclo["Ciclo"], y=_sv_ciclo["N_sin_venta"],
-                marker_color=C_AMBER, marker_line_width=0, opacity=0.9,
-                text=_sv_ciclo["N_sin_venta"], textposition="outside", textfont_size=10,
-                hovertemplate="<b>%{x}</b><br>Promos sin venta: %{y}<extra></extra>"
-            ))
-            fig_sv.update_yaxes(title="N° promos sin venta", gridcolor="#F3F4F6")
-            sec("Promos sin venta por ciclo — cuántas promos del catálogo no se activaron")
-            st.plotly_chart(pcfg(fig_sv, 220, legend=False), use_container_width=True)
-        else:
-            st.success("Todas las promos del catálogo tienen al menos una venta registrada.")
 
 # ══════════════════════════════════════════════ TAB 8: YoY
 with T[8]:
-    st.markdown("### 📅 Comparativa Año vs Año (YoY)")
+    st.markdown("### Comparativa Año vs Año (YoY)")
     st.caption("Compara los mismos meses entre distintos años para detectar tendencias reales vs estacionalidad.")
 
     if df_yoy_mes.empty:
@@ -4002,7 +3981,7 @@ with T[8]:
 
 # ══════════════════════════════════════════════ TAB 9: RANKING SKU
 with T[9]:
-    st.markdown("### 🏆 Ranking Completo de SKUs")
+    st.markdown("### Ranking Completo de SKUs")
     st.caption("Todos los productos rankeados por distintas métricas. Usa los filtros del sidebar para segmentar.")
 
     if df_sku_ranking.empty:
@@ -4114,7 +4093,7 @@ with T[9]:
         _rk_tbl = _rk.copy()
         _rk_tbl["#"] = range(1, len(_rk_tbl)+1)
         _rk_tbl["Semaforo"] = _rk_tbl["Mg_pct"].apply(
-            lambda x: "🟢" if x > _rk["Mg_pct"].quantile(0.66) else ("🟡" if x > _rk["Mg_pct"].quantile(0.33) else "🔴"))
+            lambda x: "OK" if x > _rk["Mg_pct"].quantile(0.66) else ("MED" if x > _rk["Mg_pct"].quantile(0.33) else "LOW"))
         _rk_tbl["Ingresos"]    = _rk_tbl["Ingresos"].apply(clp)
         _rk_tbl["Margen"]      = _rk_tbl["Margen"].apply(clp)
         _rk_tbl["Mg %"]        = _rk_tbl["Mg_pct"].apply(lambda x: f"{x*100:.1f}%")
@@ -4139,17 +4118,17 @@ with T[10]:
     col_dl1, col_dl2, col_dl3 = st.columns(3)
     with col_dl1:
         csv_v = df_res.to_csv(index=False, sep=";", decimal=",").encode("utf-8-sig")
-        st.download_button("⬇️ Ventas (CSV)", csv_v, "enex_ventas.csv", "text/csv",
+        st.download_button("Ventas (CSV)", csv_v, "enex_ventas.csv", "text/csv",
                            use_container_width=True)
     with col_dl2:
         csv_p = pf.to_csv(index=False, sep=";", decimal=",").encode("utf-8-sig")
-        st.download_button("⬇️ Productos (CSV)", csv_p, "enex_productos.csv", "text/csv",
+        st.download_button("Productos (CSV)", csv_p, "enex_productos.csv", "text/csv",
                            use_container_width=True)
     with col_dl3:
         with st.spinner("Preparando Excel…"):
             _excel_bytes = generar_excel(D, _filtro_desc)
         st.download_button(
-            "📊 Descargar Excel con Gráficos",
+            "Descargar Excel con Gráficos",
             _excel_bytes,
             "enex_pricing_intelligence.xlsx",
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
